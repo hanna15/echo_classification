@@ -5,6 +5,7 @@ from torch.utils.data import DataLoader
 from torchvision import models, transforms
 from torchvision.transforms import InterpolationMode
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
+import wandb
 from data.echo_dataset import EchoDataset
 
 """
@@ -56,6 +57,10 @@ def run_batch(batch, model, criterion):
 
 
 def train(model, train_loader, valid_loader, data_len, valid_len, weights=None):
+    # Initialize weights & biases logging
+    wandb.init(project='echo_classification', entity='hragnarsd', config={})
+    wandb.config.update(args)
+
     # Set training loss, optimizer and training parameters
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     if weights is None:
@@ -73,6 +78,7 @@ def train(model, train_loader, valid_loader, data_len, valid_len, weights=None):
 
         # TRAIN
         model.train()
+        wandb.watch(model)
         for train_batch in train_loader:
             loss, pred, true = run_batch(train_batch, model, criterion)
             # print('* train * loss:', loss.item(), 'pred', pred.argmax(), 'true', true)
@@ -94,7 +100,12 @@ def train(model, train_loader, valid_loader, data_len, valid_len, weights=None):
         print('train_loss:', epoch_loss / data_len)
         print('valid loss:', epoch_valid_loss / valid_len)
 
-        scheduler.step(epoch_valid_loss / valid_len) # Update learning rate scheduler
+        # Todo: Create a metric dictionary that can be updated with more metrics.
+        wandb.log({
+            "valid loss": epoch_valid_loss / valid_len,
+            "train loss": epoch_loss / data_len
+        })
+        scheduler.step(epoch_valid_loss / valid_len)  # Update learning rate scheduler
 
 
 def get_resnet():
@@ -124,7 +135,7 @@ def main():
     train_dataset = EchoDataset(videos_dir=args.videos_dir, cache_dir=args.cache_dir,
                                 scaling_factor=args.scaling_factor,
                                 file_list_path=args.train_file_list_path,
-                                transform=transform)
+                                transform=transform, procs=3)  # Todo: Have procs be a parameters
     class_weights = torch.tensor(train_dataset.class_weights, dtype=torch.float)
     valid_dataset = EchoDataset(videos_dir=args.videos_dir, cache_dir=args.cache_dir,
                                 scaling_factor=args.scaling_factor,
