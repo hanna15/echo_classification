@@ -9,7 +9,7 @@ loading during training. Only needs to be run 1x, or again once more data is ava
 
 
 parser = ArgumentParser(
-    description='Train a Machine Learning model for program synthesis on tables',
+    description='Preprocess videos and cache the resulting procesesd videos',
     formatter_class=ArgumentDefaultsHelpFormatter)
 parser.add_argument('--cache_dir', default='~/.heart_echo',
                     help='Path to the directory that should store the cached videos')
