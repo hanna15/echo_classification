@@ -7,6 +7,7 @@ from time import time
 from sklearn.utils import class_weight
 from heart_echo.Processing import ImageUtilities, VideoUtilities
 from heart_echo.Helpers import Helpers
+import matplotlib.pyplot as plt
 
 
 def load_and_process_video(video_path):
@@ -54,15 +55,11 @@ class EchoDataset(Dataset):
         print('loading sample', sample)
         curr_video_cache_path = os.path.join(self.cache_dir, str(sample) + 'KAPAP.npy')
         # curr_video_path = os.path.join(self.videos_dir, str(sample) + 'KAPAP.mp4')  # TODO: Generalise
-        try:
-            # segmented_video = load_and_process_video(curr_video_path) # If not cache
-            segmented_video = np.load(curr_video_cache_path)
-        except:
-            print(f"error - video {curr_video_cache_path} not found")
+        if not os.path.exists(curr_video_cache_path):
+            print(f'Skipping sample {sample}, as the video path {curr_video_cache_path} does not exist')
             return None, None
-        # TODO: Change this into extracting the relevant frame(s) from a video
-        frame_nr_1 = segmented_video[1]
-
+        segmented_video = np.load(curr_video_cache_path)
+        frame_nr_1 = segmented_video[1] # TODO: Change this into extracting the relevant frame(s) from a video
         # Get labels
         with open(self.label_path, 'rb') as label_file:
             all_labels = pickle.load(label_file)
