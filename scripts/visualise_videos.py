@@ -1,6 +1,6 @@
 import numpy as np
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
-from data.echo_dataset import load_and_process_video
+from echo_ph.data.echo_dataset import load_and_process_video
 import matplotlib.pyplot as plt
 """
 Script to visualise frames of echo videos
