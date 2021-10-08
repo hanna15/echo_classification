@@ -7,7 +7,6 @@ from time import time
 from sklearn.utils import class_weight
 from heart_echo.Processing import ImageUtilities, VideoUtilities
 from heart_echo.Helpers import Helpers
-import matplotlib.pyplot as plt
 
 
 def load_and_process_video(video_path):
@@ -16,6 +15,12 @@ def load_and_process_video(video_path):
     cropped_frames = [ImageUtilities.fill_side_of_line(frame, m, b) for frame in cropped_frames]
     segmented_video = VideoUtilities.segment_echo_video(cropped_frames, *segmented_points)
     return segmented_video
+
+
+# Todo: Implement this properly (and maybe at a different location)
+# Currently just returns frame nr. 1 & 3 (dummy functionality)
+def extract_max_frames(frames):
+    return [frames[1], frames[3]]
 
 
 class EchoDataset(Dataset):
@@ -35,11 +40,11 @@ class EchoDataset(Dataset):
         samples = np.load(file_list_path)
         t = time()
         with mp.Pool(processes=procs) as pool:
-            for frame, label in pool.map(self.load_sample, samples):
-                if frame is not None and label is not None:
-                    self.frames.append(frame)
-                    self.labels.append(label)
-            # ToDo the body -> Adding each sample to an array
+            for frames, label in pool.map(self.load_sample, samples):
+                if frames is not None and label is not None:
+                    for frame in frames:  # each frame becomes an individual sample (with the same label)
+                        self.frames.append(frame)
+                        self.labels.append(label)
         t = time() - t
         self.num_samples = len(self.frames)
         # Calculate class weights for weighted loss
@@ -59,12 +64,12 @@ class EchoDataset(Dataset):
             print(f'Skipping sample {sample}, as the video path {curr_video_cache_path} does not exist')
             return None, None
         segmented_video = np.load(curr_video_cache_path)
-        frame_nr_1 = segmented_video[1] # TODO: Change this into extracting the relevant frame(s) from a video
+        max_exp_frames = extract_max_frames(segmented_video)  # TODO: Change this into extracting the relevant frame(s) from a video
         # Get labels
         with open(self.label_path, 'rb') as label_file:
             all_labels = pickle.load(label_file)
         label = all_labels[sample]
-        return frame_nr_1, label
+        return max_exp_frames, label
 
     def __len__(self):
         return self.num_samples
