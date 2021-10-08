@@ -6,7 +6,7 @@ from torchvision import models, transforms
 from torchvision.transforms import InterpolationMode
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 import wandb
-from data.echo_dataset import EchoDataset
+from echo_ph.data.echo_dataset import EchoDataset
 
 """
 This script trains a basic pre-trained resnet-50 and performs image classification on the first frame of each 
@@ -38,6 +38,8 @@ parser.add_argument('--decay_patience', type=float, default=1000,
                     help='Number of epochs to decay lr for decay on plateau')
 parser.add_argument('--min_lr', type=float, default=0.0, help='Min learning rate for reducing lr.')
 parser.add_argument('--cooldown', type=float, default=0, help='cool-down for reducing lr on plateau')
+parser.add_argument('--weight_loss', action='store_true', help='set this flag to weight loss, according'
+                                                                         'to class imbalance')
 
 
 def run_batch(batch, model, criterion):
@@ -136,7 +138,10 @@ def main():
                                 scaling_factor=args.scaling_factor,
                                 file_list_path=args.train_file_list_path,
                                 transform=transform, procs=3)  # Todo: Have procs be a parameters
-    class_weights = torch.tensor(train_dataset.class_weights, dtype=torch.float)
+    if args.weight_loss:
+        class_weights = torch.tensor(train_dataset.class_weights, dtype=torch.float)
+    else:
+        class_weights = None
     valid_dataset = EchoDataset(videos_dir=args.videos_dir, cache_dir=args.cache_dir,
                                 scaling_factor=args.scaling_factor,
                                 file_list_path=args.valid_file_list_path,
