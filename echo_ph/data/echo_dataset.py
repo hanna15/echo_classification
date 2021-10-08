@@ -7,6 +7,7 @@ from time import time
 from sklearn.utils import class_weight
 from heart_echo.Processing import ImageUtilities, VideoUtilities
 from heart_echo.Helpers import Helpers
+from echo_ph.data.segmentation import SegmentationAnalyser
 
 
 def load_and_process_video(video_path):
@@ -57,14 +58,20 @@ class EchoDataset(Dataset):
         :param sample: Sample from the file list paths.
         :return: (line regions, parsed program, sample name)
         """
-        print('loading sample', sample)
         curr_video_cache_path = os.path.join(self.cache_dir, str(sample) + 'KAPAP.npy')
         # curr_video_path = os.path.join(self.videos_dir, str(sample) + 'KAPAP.mp4')  # TODO: Generalise
         if not os.path.exists(curr_video_cache_path):
-            print(f'Skipping sample {sample}, as the video path {curr_video_cache_path} does not exist')
+            #print(f'Skipping sample {sample}, as the video path {curr_video_cache_path} does not exist')
             return None, None
+        print('loading sample', sample)
         segmented_video = np.load(curr_video_cache_path)
-        max_exp_frames = extract_max_frames(segmented_video)  # TODO: Change this into extracting the relevant frame(s) from a video
+        try:
+            sample_w_ending = str(sample) + 'KAPAP'
+            max_exp_frame_nrs = SegmentationAnalyser(sample_w_ending, 'segmented_results').extraxt_max_frames(5)
+            max_exp_frames = segmented_video[max_exp_frame_nrs]
+        except:
+            return None, None
+        # max_exp_frames = extract_max_frames(segmented_video)  # TODO: Change this into extracting the relevant frame(s) from a video
         # Get labels
         with open(self.label_path, 'rb') as label_file:
             all_labels = pickle.load(label_file)
