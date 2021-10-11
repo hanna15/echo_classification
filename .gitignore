@@ -1,0 +1,5 @@
+/segmented_results/
+/echo_ph.egg-info/
+.idea
+.DS_Store
+__pycache__
