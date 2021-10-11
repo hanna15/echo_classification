@@ -17,6 +17,7 @@ Assumes the following folder structure:
     /2KAPAP
         /psax
         /plax
+Note, a similar but more visual processing can be found under notebooks/visualise_segmentation.ipynb.
 """
 
 
@@ -66,7 +67,8 @@ def main():
             print('w', w, 'h', h)
             max_expansion_frame = -1
             max_expansion = -1
-            for i in range(0, len(segm_mask), 2):  # Just look at every 4th frame
+            lv_rv_valu_to_id = {}
+            for i in range(0, len(segm_mask), 1):  # Just look at every 4th frame
                 segm_mask_frame = segm_mask[i]
                 print(f'--> Frame {i}:')
                 total_cnt = 0
@@ -78,6 +80,11 @@ def main():
                     print(f'\t{label}: cnt={cnt_label}, area_of_total={area_of_total * 100:.2f}%')
                 rv = np.count_nonzero(segm_mask_frame == labels['rv'])
                 lv = np.count_nonzero(segm_mask_frame == labels['lv'])
+                lv_rv = rv + rv
+                if lv_rv not in lv_rv_valu_to_id:
+                    lv_rv_valu_to_id[lv_rv] = [i]
+                else:
+                    lv_rv_valu_to_id[lv_rv].append(i)
                 print(f'\tratio lv/rv: {lv/rv * 100}')
                 if total_cnt > max_expansion:
                     max_expansion = total_cnt
@@ -85,6 +92,19 @@ def main():
                 print(f'\tcombined:  cnt={total_cnt}, area_of_total={total_cnt / (w * h) * 100:.2f}%')
             print(f'Max expansion frame is nr {max_expansion_frame}, with total cnt: {max_expansion} and area: '
                   f'{max_expansion / (w * h) * 100:.2f}%')
+            print('lv_rv_map')
+            print(sorted(lv_rv_valu_to_id))
+            lv_rv_vals = np.asarray(list(lv_rv_valu_to_id))
+            # percentile_90 = np.percentile(list(lv_rv_valu_to_id), 90)
+            percentile_90 = np.percentile(lv_rv_vals, 90, interpolation="nearest")
+            top_90p_vals = lv_rv_vals[lv_rv_vals >= percentile_90]
+            print('percentile 90', percentile_90)
+            for top90 in top_90p_vals:
+                print(top90, lv_rv_valu_to_id[top90])
+            print('top 5')
+            max_five = sorted(lv_rv_valu_to_id)[-5:]  # get 5 highest values
+            for max in max_five:
+                print(max, lv_rv_valu_to_id[max])
 
 
 if __name__ == '__main__':
