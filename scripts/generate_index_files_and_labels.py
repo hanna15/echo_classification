@@ -38,7 +38,7 @@ def print_res(train_labels, valid_labels):
             cnt_test[test_label] += 1
         else:
             cnt_test[test_label] = 1
-        valid_total_cnt +=1
+        valid_total_cnt += 1
     for train_label in train_labels:
         if train_label in cnt_train:
             cnt_train[train_label] += 1
