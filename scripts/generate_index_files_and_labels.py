@@ -3,12 +3,12 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 import pickle
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
-
+from echo_ph.data.ph_labels import label_map_3class, label_map_2class, get_legal_float_labels
 
 """
 This script splits videos into training and validation data in a stratified way, keeping class ratios - according
 to a given class formulation (i.e. the method used to convert raw labels to classes).
-It also stored the processed labels according to the class formulation in a file. 
+It also generates and saves the processed labels according to raw labels and provided number of classes.
 """
 
 parser = ArgumentParser(
@@ -20,45 +20,6 @@ parser.add_argument('--valid_ratio', type=float, default=0.2,
                     help='Ratio of total data used for validation')
 parser.add_argument('--raw_label_file_path', type=str, default='Echo-Liste_pseudonym.xlsx',
                     help='Path to the excel file storing the raw labels')
-
-
-def get_legal_float_labels(raw_ph_label):
-    """
-    Given a raw label, return empty string if not legal label (e.g. nan, 'undecided', or wrong range).
-    In case of a legal label, return the floating point equivalent of the label (0, 0.5, 1, 1.5, 2, 2.5, 3).
-    (The .5 comes from labels 'between' two categories.)
-    :param raw_ph_label:
-    :return: Floating point mapping of the label, or 0.0 if non-legal.
-    """
-    if isinstance(raw_ph_label, int) and 0 <= raw_ph_label <= 3:  # legal
-        return float(raw_ph_label)
-    if isinstance(raw_ph_label, str):  # string is legal if contains 'bis'
-        if 'bis' in raw_ph_label:
-            return (int(raw_ph_label[-1]) + int(raw_ph_label[0]))/2.0
-        else:  # Not a legal label (e.g. 'nichts bestimmt', etc.)
-            return -1
-    return -1   # if the label is not int, nor string, e.g. a nan - then not legal
-
-
-label_map_3class = {
-    0: 0,
-    0.5: 0,
-    1: 1,
-    1.5: 1,
-    2: 2,
-    2.5: 2,
-    3: 2
-}
-
-label_map_2class = {  # 0 and 0-1 is 'norma', rest (1, 1-2, 2, 2-3, 3) is 'abnormal)
-    0: 0,
-    0.5: 0,
-    1: 1,
-    1.5: 1,
-    2: 1,
-    2.5: 1,
-    3: 1
-}
 
 
 def print_res(train_labels, valid_labels):
