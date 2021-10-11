@@ -11,6 +11,11 @@ from echo_ph.data.segmentation import SegmentationAnalyser
 
 
 def load_and_process_video(video_path):
+    """
+    Load a single raw video and return the cropped and segmented video.
+    :param video_path: Path to the raw video
+    :return: Processed numpy video
+    """
     cropped_frames, segmented_points = Helpers.load_video(video_path)
     m, b = VideoUtilities.calculate_line_parameters(*segmented_points)
     cropped_frames = [ImageUtilities.fill_side_of_line(frame, m, b) for frame in cropped_frames]
@@ -18,19 +23,37 @@ def load_and_process_video(video_path):
     return segmented_video
 
 
-# Todo: Implement this properly (and maybe at a different location)
-# Currently just returns frame nr. 1 & 3 (dummy functionality)
-def extract_max_frames(frames):
-    return [frames[1], frames[3]]
+def get_num_max_exp_frames(label):
+    """
+    Given the provided label / class, return how many max expansion frames should be extracted for the video
+    :param label: The label of the video
+    :return: The number of max expansion frames to be extracted.
+    """
+    # TODO: Calculate it based on i) science, ii) label distribution (from all labels)
+    # Now it is just a hax to provide somewhat more even class distribution
+    if label == 0:  # normal echo
+        return 2
+    if label == 1:  # little PH
+        return 8
+    return 6  # label == 2 is medium to high PH
 
 
 class EchoDataset(Dataset):
-    def __init__(self, videos_dir='/Users/hragnarsd/Documents/masters/videos/Heart_Echo', cache_dir='~/.heart_echo',
-                 transform=None, procs=3, file_list_path='train_samples.npy', label_file_path='labels3.pkl',
-                 scaling_factor=0.5):
+    def __init__(self, file_list_path, label_file_path, videos_dir=None, cache_dir=None,
+                 transform=None, scaling_factor=0.5, procs=3):
+        """
+        Dataset for echocardiogram processing and classification in PyTorch.
+        :param file_list_path: Path to a numpy file, listing all sample names to use in this dataset.
+        :param label_file_path: Path to pickle file, containing a dictionary of labels per sample name.
+        :param videos_dir: Path to folder holding raw videos, if raw videos should be loaded. Else, None.
+        :param cache_dir: Path to the folder holding the processed, cached videos, if those should be used. Else, None.
+        :param transform: Torchvision transpose to apply to each sample in this dataset. If no transform, set to None.
+        :param scaling_factor: What scaling factor cached videos have. If using raw videos, scaling factor is not used.
+        :param procs: How many processes to use for processing this dataset.
+        """
 
         self.frames = []
-        self.labels = []
+        self.targets = []
         self.transform = transform
 
         # Paths
@@ -45,12 +68,16 @@ class EchoDataset(Dataset):
                 if frames is not None and label is not None:
                     for frame in frames:  # each frame becomes an individual sample (with the same label)
                         self.frames.append(frame)
-                        self.labels.append(label)
+                        self.targets.append(label)
         t = time() - t
         self.num_samples = len(self.frames)
+        self.labels = np.unique(self.targets)
         # Calculate class weights for weighted loss
-        self.class_weights = class_weight.compute_class_weight('balanced', np.unique(self.labels), self.labels)
-        print(f'Loaded Dataset with {self.num_samples} samples in {t:.2f} seconds')
+        self.class_weights = class_weight.compute_class_weight('balanced', self.labels, self.targets)
+
+        print(f'Loaded Dataset with {self.num_samples} samples in {t:.2f} seconds. Label distribution:')
+        for label in self.labels:  # Print number of occurrences of each label
+            print(label, ':', self.targets.count(label))
 
     def load_sample(self, sample):
         """
@@ -58,24 +85,33 @@ class EchoDataset(Dataset):
         :param sample: Sample from the file list paths.
         :return: (line regions, parsed program, sample name)
         """
-        curr_video_cache_path = os.path.join(self.cache_dir, str(sample) + 'KAPAP.npy')
-        # curr_video_path = os.path.join(self.videos_dir, str(sample) + 'KAPAP.mp4')  # TODO: Generalise
-        if not os.path.exists(curr_video_cache_path):
-            #print(f'Skipping sample {sample}, as the video path {curr_video_cache_path} does not exist')
+        if self.cache_dir is None:  # Use raw videos, as no cached processed videos provided
+            curr_video_path = os.path.join(self.videos_dir, str(sample) + 'KAPAP.mp4')  # TODO: Generalise
+        else:  # Use cached videos
+            curr_video_path = os.path.join(self.cache_dir, str(sample) + 'KAPAP.npy') # TODO: Generalise
+        if not os.path.exists(curr_video_path):
+            print(f'Skipping sample {sample}, as the video path {curr_video_path} does not exist')
             return None, None
-        print('loading sample', sample)
-        segmented_video = np.load(curr_video_cache_path)
-        try:
+        try:  # Try to get segmentations
             sample_w_ending = str(sample) + 'KAPAP'
-            max_exp_frame_nrs = SegmentationAnalyser(sample_w_ending, 'segmented_results').extraxt_max_frames(5)
-            max_exp_frames = segmented_video[max_exp_frame_nrs]
+            segm = SegmentationAnalyser(sample_w_ending, 'segmented_results')
         except:
+            print(f'Skipping sample {sample}, as the segmented results for it does not exist')
             return None, None
-        # max_exp_frames = extract_max_frames(segmented_video)  # TODO: Change this into extracting the relevant frame(s) from a video
-        # Get labels
+
+        # === Get labels ===
         with open(self.label_path, 'rb') as label_file:
             all_labels = pickle.load(label_file)
         label = all_labels[sample]
+
+        # === Get max expansion frames ===
+        num_max_frames = get_num_max_exp_frames()
+        if self.cache_dir is None:  # load raw video and process
+            segmented_video = load_and_process_video(curr_video_path)
+        else:  # load already processed numpy video
+            segmented_video = np.load(curr_video_path)
+        max_exp_frame_nrs = segm.extraxt_max_frames(num_max_frames) # get frame-ids for  max expansion frames
+        max_exp_frames = segmented_video[max_exp_frame_nrs]
         return max_exp_frames, label
 
     def __len__(self):
@@ -83,7 +119,7 @@ class EchoDataset(Dataset):
 
     def __getitem__(self, idx):
         frame = self.frames[idx]
-        label = self.labels[idx]
+        label = self.targets[idx]
         frame = self.transform(frame)
         sample = {'label': label, 'frame': frame}
         return sample

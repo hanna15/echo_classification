@@ -6,6 +6,7 @@ from torchvision import models, transforms
 from torchvision.transforms import InterpolationMode
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 import wandb
+import numpy as np
 from echo_ph.data.echo_dataset import EchoDataset
 
 """
@@ -16,18 +17,21 @@ newborn echocardiography video (KAPAP view).
 parser = ArgumentParser(
     description='Train a Machine Learning model for classifying newborn echocardiography',
     formatter_class=ArgumentDefaultsHelpFormatter)
-# Data parameters
+# Paths
 parser.add_argument('--videos_dir', default='/Users/hragnarsd/Documents/masters/videos/Heart_Echo',
                     help='Path to the directory containing the videos')
 parser.add_argument('--cache_dir', default='~/.heart_echo',
                     help='Path to the directory containing the cached and processed numpy videos')
-parser.add_argument('--scaling_factor', default=0.5, help='How much to scale (down) the videos, as a ratio of original '
-                                                          'size. Also determines the cache sub-folder')
 parser.add_argument('--train_file_list_path', default='train_samples.npy',
                     help='Path to a file containing list of samples to use for training')
 parser.add_argument('--valid_file_list_path', default='test_samples.npy',
                     help='Path to a file containing list of samples to use for validation')
-parser.add_argument('--num_workers', type=int, default=4, help='The number of workers for loading data')
+parser.add_argument('--label_path', default='labels3.pkl',
+                    help='Path to a file containing labels of all training and test data')
+# Data parameters
+parser.add_argument('--scaling_factor', default=0.5, help='How much to scale (down) the videos, as a ratio of original '
+                                                          'size. Also determines the cache sub-folder')
+parser.add_argument('--num_workers', type=int, default=3, help='The number of workers for loading data')
 
 # Training parameters
 parser.add_argument('--batch_size', type=int, default=1, help='Batch size for training.')
@@ -40,6 +44,7 @@ parser.add_argument('--min_lr', type=float, default=0.0, help='Min learning rate
 parser.add_argument('--cooldown', type=float, default=0, help='cool-down for reducing lr on plateau')
 parser.add_argument('--weight_loss', action='store_true', help='set this flag to weight loss, according'
                                                                          'to class imbalance')
+parser.add_argument('--debug', action='store_true', help='set this flag when debugging, to not connect to wandb, etc')
 
 
 def run_batch(batch, model, criterion):
@@ -60,8 +65,9 @@ def run_batch(batch, model, criterion):
 
 def train(model, train_loader, valid_loader, data_len, valid_len, weights=None):
     # Initialize weights & biases logging
-    wandb.init(project='echo_classification', entity='hragnarsd', config={})
-    wandb.config.update(args)
+    if not args.debug:
+        wandb.init(project='echo_classification', entity='hragnarsd', config={})
+        wandb.config.update(args)
 
     # Set training loss, optimizer and training parameters
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
@@ -80,7 +86,8 @@ def train(model, train_loader, valid_loader, data_len, valid_len, weights=None):
 
         # TRAIN
         model.train()
-        wandb.watch(model)
+        if not args.debug:
+            wandb.watch(model)
         for train_batch in train_loader:
             loss, pred, true = run_batch(train_batch, model, criterion)
             # print('* train * loss:', loss.item(), 'pred', pred.argmax(), 'true', true)
@@ -103,14 +110,15 @@ def train(model, train_loader, valid_loader, data_len, valid_len, weights=None):
         print('valid loss:', epoch_valid_loss / valid_len)
 
         # Todo: Create a metric dictionary that can be updated with more metrics.
-        wandb.log({
-            "valid loss": epoch_valid_loss / valid_len,
-            "train loss": epoch_loss / data_len
-        })
+        if not args.debug:
+            wandb.log({
+                "valid loss": epoch_valid_loss / valid_len,
+                "train loss": epoch_loss / data_len
+            })
         scheduler.step(epoch_valid_loss / valid_len)  # Update learning rate scheduler
 
 
-def get_resnet():
+def get_resnet(num_classes=3):
     model = models.resnet50(pretrained=True)
     in_channels = 1
     # Change the input layer to take Grayscale image, instead of RGB images (set in_channels as 1)
@@ -120,14 +128,11 @@ def get_resnet():
 
     # Change the output layer to output 3 classes instead of 1000 classes
     num_ftrs = model.fc.in_features
-    model.fc = nn.Linear(num_ftrs, 3)
+    model.fc = nn.Linear(num_ftrs, num_classes)
     return model
 
 
 def main():
-    # Model
-    model = get_resnet()
-
     # Data
     transform = transforms.Compose([transforms.ToPILImage(),
                                     transforms.Resize(size=(128, 128),
@@ -135,21 +140,24 @@ def main():
                                     transforms.ToTensor()])
 
     train_dataset = EchoDataset(videos_dir=args.videos_dir, cache_dir=args.cache_dir,
-                                scaling_factor=args.scaling_factor,
-                                file_list_path=args.train_file_list_path,
-                                transform=transform, procs=3)  # Todo: Have procs be a parameters
+                                file_list_path=args.train_file_list_path, label_file_path=args.label_path,
+                                transform=transform, scaling_factor=args.scaling_factor, procs=args.num_workers)
     if args.weight_loss:
         class_weights = torch.tensor(train_dataset.class_weights, dtype=torch.float)
     else:
         class_weights = None
     valid_dataset = EchoDataset(videos_dir=args.videos_dir, cache_dir=args.cache_dir,
-                                scaling_factor=args.scaling_factor,
-                                file_list_path=args.valid_file_list_path,
-                                transform=transform)
+                                file_list_path=args.valid_file_list_path, label_file_path=args.label_path,
+                                transform=transform, scaling_factor=args.scaling_factor,
+                                procs=args.num_workers)
     # For the data loader, if only use 1 worker, set it to 0, so data is loaded on the main process
     num_workers = (0 if args.num_workers == 1 else args.num_workers)
     train_loader = DataLoader(train_dataset, args.batch_size, shuffle=True, num_workers=num_workers)
     valid_loader = DataLoader(valid_dataset, args.batch_size, shuffle=False, num_workers=num_workers)
+
+    # Model
+    model = get_resnet(num_classes=len(train_dataset.labels))
+
     train(model, train_loader, valid_loader, len(train_dataset), len(valid_dataset), weights=class_weights)
 
 
