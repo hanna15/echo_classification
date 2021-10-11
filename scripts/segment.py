@@ -32,7 +32,7 @@ parser.add_argument('--samples', default=None, nargs='+',
                          'names of the desired samples/file names (including ending) after this flag')
 parser.add_argument('--model_views', default='psax', choices=['psax', 'plax', 'all', 'a4c'],
                     help='What echocv-views to use for segmentation. Currently only psax and plax supported.')
-parser.add_argument('--our_view', default='psax', choices=['KAPAP', 'KAAP', 'CV'],
+parser.add_argument('--our_view', default='KAPAP', choices=['KAPAP', 'KAAP', 'CV'],
                     help='What view to use for our data. Currently only KAPAP, KAAP and CV supported.')
 parser.add_argument('--save_visualisations', action='store_true', help='set this flag to save the visuals of '
                                                                        'segmentation mask for each image / frame ')
@@ -132,10 +132,10 @@ segmentation_labels = {
 
 def main():
     args = parser.parse_args()
-    if args.views == 'all':
+    if args.model_views == 'all':
         model_views = ['psax', 'plax']
     else:
-        model_views = [args.views]
+        model_views = [args.model_views]
 
     # NN Parameters
     mean = 24
