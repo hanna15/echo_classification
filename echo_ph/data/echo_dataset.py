@@ -32,10 +32,10 @@ def get_num_max_exp_frames(label):
     # TODO: Calculate it based on i) science, ii) label distribution (from all labels)
     # Now it is just a hax to provide somewhat more even class distribution
     if label == 0:  # normal echo
-        return 2
+        return 4
     if label == 1:  # little PH
-        return 8
-    return 6  # label == 2 is medium to high PH
+        return 12
+    return 12  # label == 2 is medium to high PH
 
 
 class EchoDataset(Dataset):
@@ -105,7 +105,7 @@ class EchoDataset(Dataset):
         label = all_labels[sample]
 
         # === Get max expansion frames ===
-        num_max_frames = get_num_max_exp_frames()
+        num_max_frames = get_num_max_exp_frames(label)
         if self.cache_dir is None:  # load raw video and process
             segmented_video = load_and_process_video(curr_video_path)
         else:  # load already processed numpy video
