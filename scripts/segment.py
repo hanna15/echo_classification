@@ -4,6 +4,8 @@ import numpy as np
 import json
 import pickle
 import bz2
+import multiprocessing as mp
+from functools import partial
 from torchvision import transforms
 from torchvision.transforms import InterpolationMode
 import matplotlib.pyplot as plt
@@ -20,18 +22,21 @@ parser = ArgumentParser(
     formatter_class=ArgumentDefaultsHelpFormatter)
 parser.add_argument('--models_path', default='/Users/hragnarsd/Documents/masters/segmentation_models',
                     help='Path to the directory storing the pre-trained models (checkpoints)')
-parser.add_argument('--videos_path', default='/Users/hragnarsd/.heart_echo/0.5_backup',
-                    help='Path to the directory storing the echo videos to be segmented.')
+parser.add_argument('--cache_dir', default='~/.heart_echo',
+                    help='Path to the root directory storing the cached, processed echo videos to be segmented.')
+parser.add_argument('--scaling_factor', default=0.5,
+                    help='Scaling factor of cached videos to segment.')
 parser.add_argument('--out_root_dir', default='segmented_results',
                     help='Path to the directory that should store the resulting segmentation maps')
+parser.add_argument('--procs', type=int, default=3, help='Number of processes')
 parser.add_argument('--max_frames', type=int, default=1000, help='Max number of frames to do segmentation prediction on')
 parser.add_argument('--sampling_period', type=int, default=1,
                     help='If sample each frame, set to 1 (default). To sample every x-th frame, set to x.')
 parser.add_argument('--samples', default=None, nargs='+',
                     help='Set this flag to segment only specific samples (videos) instead of all. Input space seperated'
                          'names of the desired samples/file names (including ending) after this flag')
-parser.add_argument('--model_views', default='psax', choices=['psax', 'plax', 'all', 'a4c'],
-                    help='What echocv-views to use for segmentation. Currently only psax and plax supported.')
+parser.add_argument('--model_view', default='psax', choices=['psax', 'plax', 'a4c'],
+                    help='What echocv-views to use for segmentation. Currently only psax, plax and a4c supported.')
 parser.add_argument('--our_view', default='KAPAP', choices=['KAPAP', 'KAAP', 'CV'],
                     help='What view to use for our data. Currently only KAPAP, KAAP and CV supported.')
 parser.add_argument('--save_visualisations', action='store_true', help='set this flag to save the visuals of '
@@ -129,81 +134,71 @@ segmentation_labels = {
             }
 }
 
+# NN Parameters
+mean = 24
+weight_decay = 1e-12
+learning_rate = 1e-4
+maxout = False
+frame_size = 384
+
+transform = transforms.Compose([transforms.ToPILImage(),
+                                transforms.Grayscale(),
+                                transforms.Resize(size=(frame_size, frame_size),
+                                                  interpolation=InterpolationMode.BICUBIC)])
+
+
+def segment_video(args, video_path):
+    print('video_path', video_path)
+    print('args', args)
+    video_name = os.path.basename(video_path)[:-4]
+    print('segmenting video', video_name)
+    out_dir = os.path.join(args.out_root_dir, video_name, args.model_view)
+    os.makedirs(out_dir, exist_ok=True)
+    # === Get model ===
+    graph = tf.Graph()
+    with graph.as_default():
+        num_labels = model_dict[args.model_view]['label_dim']
+        checkpoint_path = model_dict[args.model_view]['restore_path']
+        sess = tf.compat.v1.Session()
+        model = Unet(mean, weight_decay, learning_rate, num_labels, maxout=maxout)
+        sess.run(tf.compat.v1.local_variables_initializer())
+    with graph.as_default():
+        saver = tf.compat.v1.train.Saver()
+        saver.restore(sess, os.path.join(args.models_path, checkpoint_path))
+
+    # === Get data ===
+    video_frames = np.load(video_path)
+    num_frames = len(video_frames)
+    num_frames = min(num_frames, args.max_frames)  # If only process specified number of frames
+    # Resizing each frame that we want to process
+    frames_resized = []
+    for i in range(0, num_frames * args.sampling_period, args.sampling_period):
+        img_frame = video_frames[i]
+        transformed_frame = np.array(transform(img_frame))
+        frames_resized.append(transformed_frame)
+    print('Starting to predict')
+    frames_to_predict = np.array(frames_resized, dtype=np.float64).reshape(
+        (len(frames_resized), frame_size, frame_size, 1))
+    predicted_frames = np.argmax(model.predict(sess, frames_to_predict),
+                                 -1)  # argmax max over last dim (labels)
+    save_segm_map(predicted_frames, args.model_view, out_dir, video_name)
+    if args.save_visualisations:
+        for i in range(num_frames):
+            save_segmentation_visuals(i, frames_resized[i], predicted_frames[i], out_dir, video_name)
+
 
 def main():
     args = parser.parse_args()
-    if args.model_views == 'all':
-        model_views = ['psax', 'plax']
-    else:
-        model_views = [args.model_views]
-
-    # NN Parameters
-    mean = 24
-    weight_decay = 1e-12
-    learning_rate = 1e-4
-    maxout = False
-    frame_size = 384
-
-    transform = transforms.Compose([transforms.ToPILImage(),
-                                    transforms.Grayscale(),
-                                    transforms.Resize(size=(frame_size, frame_size),
-                                                      interpolation=InterpolationMode.BICUBIC)])
-
-    # demo: 30, 55, 97
-    if args.samples is None:
-        video_files = os.listdir(args.videos_path)
-    else:
-        video_files = args.samples
+    videos_path = os.path.join(os.path.expanduser(args.cache_dir), str(args.scaling_factor))
     video_ending = args.our_view + '.npy'
-    video_files = [str(vid) + video_ending for vid in video_files]
-    for video_file in video_files:
-        if video_file.endswith('.npy') or video_file.endswith('.mp4'):
-            video_name = video_file[:-4]
-            out_dir = os.path.join(args.out_root_dir, video_name)
-            for view in model_views:
-                print(f'processing video {video_name} for view {view}')
-                view_out_dir = os.path.join(out_dir, view)
-                os.makedirs(view_out_dir, exist_ok=True)
-                print('Results will be saved to', view_out_dir)
-
-                # === Get model ===
-                graph = tf.Graph()
-                with graph.as_default():
-                    num_labels = model_dict[view]['label_dim']
-                    checkpoint_path = model_dict[view]['restore_path']
-                    sess = tf.compat.v1.Session()
-                    model = Unet(mean, weight_decay, learning_rate, num_labels, maxout=maxout)
-                    sess.run(tf.compat.v1.local_variables_initializer())
-                with graph.as_default():
-                    saver = tf.compat.v1.train.Saver()
-                    saver.restore(sess, os.path.join(args.models_path, checkpoint_path))
-
-                # === Get data ===
-                if video_file.endswith('.npy'): # already processed video
-                    video_frames = np.load(os.path.join(args.videos_path, video_file))
-                else:
-                    print("Not yet implemented => ToDO: Add code snippet to work on raw videos")
-                    video_frames = None
-                num_frames = len(video_frames)
-                num_frames = min(num_frames, args.max_frames)  # If only process specified number of frames
-                # Resizing each frame that we want to process
-                frames_resized = []
-                for i in range(0, num_frames * args.sampling_period, args.sampling_period):
-                    img_frame = video_frames[i]
-                    transformed_frame = np.array(transform(img_frame))
-                    frames_resized.append(transformed_frame)
-                print('Starting to predict')
-                frames_to_predict = np.array(frames_resized, dtype=np.float64).reshape((len(frames_resized), frame_size, frame_size, 1))
-                predicted_frames = np.argmax(model.predict(sess, frames_to_predict), -1)  # argmax max over last dim (labels)
-                save_segm_map(predicted_frames, view, view_out_dir, video_name)
-                if args.save_visualisations:
-                    for i in range(num_frames):
-                        save_segmentation_visuals(i, frames_resized[i], predicted_frames[i], view_out_dir, video_name)
+    if args.samples is None:
+        video_files = [file for file in os.listdir(videos_path) if file.endswith(video_ending)]
+    else:
+        video_files = [sample_name + video_ending for sample_name in args.samples]
+    video_paths = [os.path.join(videos_path, video_file) for video_file in video_files]
+    with mp.Pool(processes=args.procs) as pool:
+        pool.map(partial(segment_video, args), video_paths)
 
 
 if __name__ == '__main__':
-    # Note: these samples would be good to have segmented (as these I have available now for training).
-    # video_files = [60, 56, 93, 79, 38, 90, 87, 82, 31, 71, 36, 54, 40, 94, 72, 48, 62, 83, 59, 42, 70, 33, 49, 34, 81,
-    #               92, 80, 104, 69, 88, 35, 53, 73, 99, 57, 41, 68, 91, 84, 61, 86, 63, 50, 78, 95, 74, 75, 103, 105,
-    #               85, 98, 102, 58, 100, 37, 67, 89, 39]
     main()
