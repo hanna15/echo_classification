@@ -148,12 +148,11 @@ transform = transforms.Compose([transforms.ToPILImage(),
 
 
 def segment_video(args, video_path):
-    print('video_path', video_path)
-    print('args', args)
     video_name = os.path.basename(video_path)[:-4]
     print('segmenting video', video_name)
     out_dir = os.path.join(args.out_root_dir, video_name, args.model_view)
     os.makedirs(out_dir, exist_ok=True)
+    print('out_dir', out_dir)
     # === Get model ===
     graph = tf.Graph()
     with graph.as_default():
@@ -176,11 +175,18 @@ def segment_video(args, video_path):
         img_frame = video_frames[i]
         transformed_frame = np.array(transform(img_frame))
         frames_resized.append(transformed_frame)
-    print('Starting to predict')
+    # print('Starting to predict')
     frames_to_predict = np.array(frames_resized, dtype=np.float64).reshape(
         (len(frames_resized), frame_size, frame_size, 1))
-    predicted_frames = np.argmax(model.predict(sess, frames_to_predict),
-                                 -1)  # argmax max over last dim (labels)
+    predicted_frames = []
+    for frame in frames_to_predict:  # predict one frame at a time, to save memory
+        frame_to_predict = np.expand_dims(frame, 0) # add 1 in front for batch_size 1
+        pred_frame = np.argmax(model.predict(sess, frame_to_predict), -1)  # argmax max over last dim
+    #predicted_frames = np.argmax(model.predict(sess, frames_to_predict),
+    #                             -1)  # argmax max over last dim (labels)
+        predicted_frames.append(np.squeeze(pred_frame, 0))
+    predicted_frames = np.asarray(predicted_frames)
+    print('saving video', video_name)
     save_segm_map(predicted_frames, args.model_view, out_dir, video_name)
     if args.save_visualisations:
         for i in range(num_frames):
