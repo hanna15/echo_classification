@@ -58,7 +58,10 @@ class EchoDataset(Dataset):
 
         # Paths
         self.videos_dir = videos_dir
-        self.cache_dir = os.path.join(os.path.expanduser(cache_dir), str(scaling_factor))
+        if cache_dir is None:
+            self.cache_dir = None
+        else:
+            self.cache_dir = os.path.join(os.path.expanduser(cache_dir), str(scaling_factor))
         self.label_path = label_file_path
 
         samples = np.load(file_list_path)
@@ -71,13 +74,16 @@ class EchoDataset(Dataset):
                         self.targets.append(label)
         t = time() - t
         self.num_samples = len(self.frames)
-        self.labels = np.unique(self.targets)
+        self.labels, cnts = np.unique(self.targets, return_counts=True)
         # Calculate class weights for weighted loss
         self.class_weights = class_weight.compute_class_weight('balanced', self.labels, self.targets)
-
+        if len(self.class_weights) <= max(self.labels):  # we have a missing label = not calculate example weights (hax)
+            self.example_weights = None
+        else:
+            self.example_weights = [self.class_weights[t] for t in self.targets]
         print(f'Loaded Dataset with {self.num_samples} samples in {t:.2f} seconds. Label distribution:')
-        for label in self.labels:  # Print number of occurrences of each label
-            print(label, ':', self.targets.count(label))
+        for label, cnt in zip(self.labels, cnts):  # Print number of occurrences of each label
+            print(label, ':', cnt)
 
     def load_sample(self, sample):
         """
@@ -121,5 +127,5 @@ class EchoDataset(Dataset):
         frame = self.frames[idx]
         label = self.targets[idx]
         frame = self.transform(frame)
-        sample = {'label': label, 'frame': frame}
+        sample = {'label': label, 'frames': frame}
         return sample
