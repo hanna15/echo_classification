@@ -3,28 +3,21 @@
 # Mapping the original four labels (including in-between labels) to 3 classes.
 # Keys represent original labels, values new labels.
 # .5 keys represent labels in-between two original labels.
-label_map_3class = {
-    0: 0,
-    0.5: 0,
-    1: 1,
-    1.5: 1,
-    2: 2,
-    2.5: 2,
-    3: 2
-}
+label_map_3class = ({0: 0, 0.5: 0, 1: 1, 1.5: 1, 2: 2, 2.5: 2, 3: 2},
+                    '3class')  # later parameter is descriptive name
 
 # Mapping the original four labels (including in-between labels) to 2 classes.
 # Keys represent original labels, values new labels.
 # .5 keys represent labels in-between two original labels.
-label_map_2class = {  # 0 and 0-1 is 'norma', rest (1, 1-2, 2, 2-3, 3) is 'abnormal)
-    0: 0,
-    0.5: 0,
-    1: 1,
-    1.5: 1,
-    2: 1,
-    2.5: 1,
-    3: 1
-}
+# 0 and 0-1 is 'normal', rest (1, 1-2, 2, 2-3, 3) is 'abnormal)
+label_map_2class = ({0: 0, 0.5: 0, 1: 1, 1.5: 1, 2: 1, 2.5: 1, 3: 1},
+                    '2class')  # later parameter is descriptive name
+
+# Mapping the original four labels (including in-between labels) to 2 classes.
+# Keys represent original labels, values new labels.
+# .5 keys represent labels in-between two original labels.
+label_map_2class_drop0bis1_drop3 = ({0: 0, 0.5: None, 1: 1, 1.5: 1, 2: 1, 2.5: 1, 3: None},
+                                    '2class_drop_ambiguous')  # later parameter is descriptive name
 
 
 def get_legal_float_labels(raw_ph_label):
