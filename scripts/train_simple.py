@@ -65,7 +65,7 @@ def run_batch(batch, model, criterion, binary=False):
     :param binary: Set to True if this is binary classification.
     :return: The required metrics for this batch, as well as the predictions and targets
     """
-    dev = device('cuda' if cuda.is_available() and not args.load_model else 'cpu')
+    dev = device('cuda' if cuda.is_available() else 'cpu')
     input = batch["frames"].to(dev)  # batch_size, num_channels, w, h
     targets = batch["label"].to(dev)
     outputs = model(input)
@@ -156,7 +156,7 @@ def get_resnet(num_classes=3):
 
 
 def main():
-    device = torch.device('cuda' if torch.cuda.is_available() and not args.load_model else 'cpu')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('start training on device', device)
     binary = False
     if args.label_type.startswith('2class'):
