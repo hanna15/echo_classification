@@ -19,7 +19,7 @@ from heart_echo.Helpers import LABELTYPE
 from utils.constants import TRAIN_PATIENT_IDS, VAL_PATIENT_IDS, TEST_PATIENT_IDS
 from heart_echo.pytorch import HeartEchoDataset
 
-FILL_VAL = 0.3
+FILL_VAL = 0.3  # ?? Where does this value come from (??)
 
 
 class Identity():
@@ -310,7 +310,7 @@ class RandResizePad():
     """
 
     def __init__(self, scale, pad_noise=False):
-        assert scale < 1, "Scale must be greater than 1 for RandResizeCrop"
+        assert scale < 1, "Scale must be less than 1 for RandResizePad"
         self.pad_noise = pad_noise
         self.min_scale = scale
 
@@ -329,7 +329,8 @@ class RandResizePad():
         sample = transforms.functional.resize(sample, size=(int(rand_scale * H), int(rand_scale * W)))
         new_H, new_W = sample.shape[-2], sample.shape[-1]
         pad_up_down, pad_left_right = (H - new_H) // 2, (W - new_W) // 2
-        sample = transforms.functional.pad(sample, padding=(pad_left_right, pad_up_down), fill=FILL_VAL)
+        # sample = transforms.functional.pad(sample, padding=(pad_left_right, pad_up_down), fill=FILL_VAL) # This will lead to all-black img
+        sample = transforms.functional.pad(sample, padding=[pad_left_right, pad_up_down]) # Using default fill value works
         assert H - 2 <= sample.shape[-2] <= H + 2 and W - 2 <= sample.shape[
             -1] <= W + 2, f"Wrong dimension after padding, original was {(H, W)}, new is {sample.shape[-2:]}"
         if self.pad_noise:
@@ -459,22 +460,14 @@ class AugmentSimpleIntensityOnly():
     brightness adjustment, Gamma Correction, blurring and sharpening the image
     """
 
-    def __init__(self, orig_img_scale=0.5, size=-1, return_pid=False):
-        self.return_pid = return_pid
-        # Generate pre-computation libraries for masks and corners
-        self.mask_path = os.path.expanduser(os.path.join('~', '.echo-net', 'masks'))
-        Path(self.mask_path).mkdir(parents=True, exist_ok=True)
-
-        # Get masks and corners
-        self.orig_img_scale = orig_img_scale
-        self.size = size
+    def __init__(self):
 
         # Define augmentation transforms
         self.intensity_transformations = [
             RandomSharpness(),
             RandomBrightnessAdjustment(),
-            RandomGammaCorrection(),
-            SaltPepperNoise()
+            RandomGammaCorrection()  #,
+            #SaltPepperNoise()
         ]
 
     def __call__(self, sample):
@@ -483,9 +476,10 @@ class AugmentSimpleIntensityOnly():
 
         # Apply intensity transformations
         for t in self.intensity_transformations:
-            if 0.7 < torch.rand(1):  # Apply each transformation with 30% possibility
+            # Apply each transformation with 50 % possibility
+            # So, could have all or no transformations, but usually only 1-2 transformations will be picked
+            if torch.rand(1) > 0.5:
                 sample = t(sample)
-
         return sample
 
 
@@ -514,7 +508,7 @@ class Normalize():
         return sample.float() / 255.
 
 
-class SaltPepperNoise():
+class SaltPepperNoise(): # TODO: Look into this - does not work as planned (!)
     """
     Add Salt and Pepper noise on top of the image
     """
@@ -554,7 +548,7 @@ class RandomGammaCorrection():
 
 class RandomSharpness():
     """
-    Randomly increase oder decrease image sharpness
+    Randomly increase or decrease image sharpness
     """
 
     def __call__(self, sample):

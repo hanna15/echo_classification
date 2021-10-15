@@ -18,20 +18,36 @@ class SegmentationAnalyser:
         self.segm_mask = np.asarray(pickle.load(data))
         self.w, self.h = self.segm_mask.shape[1:3]
 
-    def extraxt_max_frames(self, num_max_frames=5):
+    # def extraxt_max_frames(self, num_max_frames=5):
+    #     volume_to_frame_nr = defaultdict(list)  # initialise the dict with an empty list (to add frame ids)
+    #     for frame_nr, segm_mask_frame in enumerate(self.segm_mask):
+    #         rv_vol = np.count_nonzero(segm_mask_frame == self.labels['rv'])
+    #         lv_vol = np.count_nonzero(segm_mask_frame == self.labels['lv'])
+    #         volume_to_frame_nr[lv_vol + rv_vol].append(frame_nr)
+    #     sorted_volumes = sorted(volume_to_frame_nr)
+    #     max_expansion_volumes = sorted_volumes[-num_max_frames:]  # get largest volumes
+    #     max_expansion_frames = []
+    #     cnt = 0
+    #     for max_vol in max_expansion_volumes:
+    #         for frame_nr in volume_to_frame_nr[max_vol]:
+    #             cnt += 1
+    #             max_expansion_frames.append(frame_nr)
+    #             if cnt >= num_max_frames:
+    #                 break
+    #     return max_expansion_frames
+
+    def extract_max_percentile_frames(self, percentile=90):
         volume_to_frame_nr = defaultdict(list)  # initialise the dict with an empty list (to add frame ids)
         for frame_nr, segm_mask_frame in enumerate(self.segm_mask):
             rv_vol = np.count_nonzero(segm_mask_frame == self.labels['rv'])
             lv_vol = np.count_nonzero(segm_mask_frame == self.labels['lv'])
             volume_to_frame_nr[lv_vol + rv_vol].append(frame_nr)
-        sorted_volumes = sorted(volume_to_frame_nr)
-        max_expansion_volumes = sorted_volumes[-num_max_frames:]  # get largest volumes
+
+        volume_list = np.asarray(list(volume_to_frame_nr))
+        percentile = np.percentile(volume_list, percentile, interpolation="nearest")
+        top_percentile_volumes = volume_list[volume_list >= percentile]
         max_expansion_frames = []
-        cnt = 0
-        for max_vol in max_expansion_volumes:
-            for frame_nr in volume_to_frame_nr[max_vol]:
-                cnt += 1
-                max_expansion_frames.append(frame_nr)
-                if cnt >= num_max_frames:
-                    break
+        for top_p in top_percentile_volumes:
+            top_frame = volume_to_frame_nr[top_p]
+            max_expansion_frames.extend(top_frame)
         return max_expansion_frames

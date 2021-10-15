@@ -8,6 +8,7 @@ from sklearn.utils import class_weight
 from heart_echo.Processing import ImageUtilities, VideoUtilities
 from heart_echo.Helpers import Helpers
 from echo_ph.data.segmentation import SegmentationAnalyser
+import matplotlib.pyplot as plt
 
 
 def load_and_process_video(video_path):
@@ -23,24 +24,9 @@ def load_and_process_video(video_path):
     return segmented_video
 
 
-def get_num_max_exp_frames(label):
-    """
-    Given the provided label / class, return how many max expansion frames should be extracted for the video
-    :param label: The label of the video
-    :return: The number of max expansion frames to be extracted.
-    """
-    # TODO: Calculate it based on i) science, ii) label distribution (from all labels)
-    # Now it is just a hax to provide somewhat more even class distribution
-    if label == 0:  # normal echo
-        return 4
-    if label == 1:  # little PH
-        return 12
-    return 12  # label == 2 is medium to high PH
-
-
 class EchoDataset(Dataset):
-    def __init__(self, file_list_path, label_file_path, videos_dir=None, cache_dir=None,
-                 transform=None, scaling_factor=0.5, procs=3):
+    def __init__(self, index_file_path, label_file_path, videos_dir=None, cache_dir=None,
+                 transform=None, scaling_factor=0.5, procs=3, visualise_frames=False):
         """
         Dataset for echocardiogram processing and classification in PyTorch.
         :param file_list_path: Path to a numpy file, listing all sample names to use in this dataset.
@@ -50,21 +36,21 @@ class EchoDataset(Dataset):
         :param transform: Torchvision transpose to apply to each sample in this dataset. If no transform, set to None.
         :param scaling_factor: What scaling factor cached videos have. If using raw videos, scaling factor is not used.
         :param procs: How many processes to use for processing this dataset.
+        :param visualise_frames: If visualise frames during training (after transformation)
         """
 
         self.frames = []
         self.targets = []
         self.transform = transform
-
-        # Paths
         self.videos_dir = videos_dir
         if cache_dir is None:
             self.cache_dir = None
         else:
             self.cache_dir = os.path.join(os.path.expanduser(cache_dir), str(scaling_factor))
         self.label_path = label_file_path
+        self.visualise_frames = visualise_frames
 
-        samples = np.load(file_list_path)
+        samples = np.load(index_file_path)
         t = time()
         with mp.Pool(processes=procs) as pool:
             for frames, label in pool.map(self.load_sample, samples):
@@ -111,12 +97,11 @@ class EchoDataset(Dataset):
         label = all_labels[sample]
 
         # === Get max expansion frames ===
-        num_max_frames = get_num_max_exp_frames(label)
         if self.cache_dir is None:  # load raw video and process
             segmented_video = load_and_process_video(curr_video_path)
         else:  # load already processed numpy video
             segmented_video = np.load(curr_video_path)
-        max_exp_frame_nrs = segm.extraxt_max_frames(num_max_frames) # get frame-ids for  max expansion frames
+        max_exp_frame_nrs = segm.extract_max_percentile_frames()
         max_exp_frames = segmented_video[max_exp_frame_nrs]
         return max_exp_frames, label
 
@@ -127,5 +112,8 @@ class EchoDataset(Dataset):
         frame = self.frames[idx]
         label = self.targets[idx]
         frame = self.transform(frame)
+        if self.visualise_frames:
+            plt.imshow(frame.squeeze(0), cmap='gray')
+            plt.show()
         sample = {'label': label, 'frames': frame}
         return sample
