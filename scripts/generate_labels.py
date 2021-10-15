@@ -17,8 +17,8 @@ is saved.
 parser = ArgumentParser(
     description='Generates labels according to given number of classes',
     formatter_class=ArgumentDefaultsHelpFormatter)
-parser.add_argument('--num_classes', type=int, default=3,
-                    help='How many classes to create from raw labels.')
+parser.add_argument('--num_classes', type=int, default=3, choices=[2, 3, -1],
+                    help='How many classes to create from raw labels. Set -1 for generating labels for all classes')
 parser.add_argument('--valid_ratio', type=float, default=0.2,
                     help='Ratio of total data used for validation')
 parser.add_argument('--raw_label_file_path', type=str, default='Echo-Liste_pseudonym.xlsx',
@@ -38,10 +38,8 @@ def main():
         label_maps = [label_map_3class]
     elif args.num_classes == 2:
         label_maps = [label_map_2class, label_map_2class_drop0bis1_drop3]  # have 2 possibilities for 2-class
-    else:
-        print("Have not yet implemented any other class numbers except 2 and 3. Try again")
-        label_maps = None
-        exit(-1)
+    else:  # if num_classes = -1 ==> I.e. all classes
+        label_maps = [label_map_3class, label_map_2class, label_map_2class_drop0bis1_drop3]
 
     for label_map in label_maps:  # In case more than 1 label map per class number => save as seperate index files
         final_samples = []
