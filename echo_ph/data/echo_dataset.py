@@ -62,7 +62,7 @@ class EchoDataset(Dataset):
         self.num_samples = len(self.frames)
         self.labels, cnts = np.unique(self.targets, return_counts=True)
         # Calculate class weights for weighted loss
-        self.class_weights = class_weight.compute_class_weight('balanced', self.labels, self.targets)
+        self.class_weights = class_weight.compute_class_weight('balanced', classes=self.labels, y=self.targets)
         if len(self.class_weights) <= max(self.labels):  # we have a missing label = not calculate example weights (hax)
             self.example_weights = None
         else:
