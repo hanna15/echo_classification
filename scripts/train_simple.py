@@ -57,17 +57,18 @@ parser.add_argument('--debug', action='store_true', help='set this flag when deb
 parser.add_argument('--visualise_frames', action='store_true', help='set this flag to visualise frames')
 
 
-def precision_score(precision_function, targets, preds, avg='weighted'):
-    return torch.tensor(precision_function(targets, preds))
-
-
-def get_metrics(outputs, targets, prefix=''):
+def get_metrics(outputs, targets, prefix='', binary=False):
     out = outputs.cpu()
     tar = targets.cpu()
     _, preds = torch.max(out, dim=1)
-    metrics = {prefix + 'f1': precision_score(f1_score, tar, preds).item(),
-               prefix + 'accuracy': precision_score(accuracy_score, tar, preds).item(),
-               prefix + 'b-accuracy': precision_score(balanced_accuracy_score, tar, preds).item()
+    # Determine averaging strategies for f1-score
+    if binary:
+        avg = 'binary'
+    else:
+        avg = 'micro'  # Todo: For imbalanced multi-class, micro is better than macro
+    metrics = {prefix + 'f1': f1_score(tar, preds, average=avg),
+               prefix + 'accuracy': accuracy_score(tar, preds),
+               prefix + 'b-accuracy': balanced_accuracy_score(tar, preds)
                }
     return metrics, preds
 
@@ -93,7 +94,7 @@ def run_batch(batch, model, criterion, binary=False, metric_prefix=''):
     else:
         loss = criterion(outputs, targets)
     # return original targets (not one-hot)
-    metrics, predictions = get_metrics(outputs, targets, metric_prefix)
+    metrics, predictions = get_metrics(outputs, targets, metric_prefix, binary)
     return loss, predictions, targets, metrics
 
 
