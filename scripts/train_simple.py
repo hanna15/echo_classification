@@ -5,7 +5,7 @@ from torch import cuda, device
 from torch import nn, optim, no_grad
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from torchvision import models, transforms
-from torchvision.transforms import InterpolationMode
+from PIL import Image
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 import wandb
 from echo_ph.data.echo_dataset import EchoDataset
@@ -204,7 +204,7 @@ def main():
     # Data
     # First resize, then normalize (!)
     base_transforms = [transforms.ToPILImage(), transforms.Resize(size=(128, 128),
-                                                                  interpolation=InterpolationMode.BICUBIC),
+                                                                  interpolation=Image.BICUBIC),
                        transforms.ToTensor(), Normalize()]
     transform_list_train = base_transforms
     if args.augment:
