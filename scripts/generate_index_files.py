@@ -79,7 +79,7 @@ def main():
             label_dicts.append(label_dict)
 
     for label_dict, label_file in zip(label_dicts, label_files):
-        print("Results for", label_file)
+        print("\nResults for", label_file)
         labels_in_use = []
         video_ids_in_use = []
         video_ending_len = len(video_ending)

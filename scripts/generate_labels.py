@@ -19,8 +19,6 @@ parser = ArgumentParser(
     formatter_class=ArgumentDefaultsHelpFormatter)
 parser.add_argument('--num_classes', type=int, default=3, choices=[2, 3, -1],
                     help='How many classes to create from raw labels. Set -1 for generating labels for all classes')
-parser.add_argument('--valid_ratio', type=float, default=0.2,
-                    help='Ratio of total data used for validation')
 parser.add_argument('--raw_label_file_path', type=str, default='Echo-Liste_pseudonym.xlsx',
                     help='Path to the excel file storing the raw labels')
 parser.add_argument('--out_dir', type=str, default='label_files',
