@@ -10,6 +10,7 @@ from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 import wandb
 from echo_ph.data.echo_dataset import EchoDataset
 from utils.transforms import Normalize, RandomResize, AugmentSimpleIntensityOnly
+from sklearn.metrics import f1_score, accuracy_score, balanced_accuracy_score
 
 """
 This script trains a basic pre-trained resnet-50 and performs image classification on the first frame of each 
@@ -56,13 +57,29 @@ parser.add_argument('--debug', action='store_true', help='set this flag when deb
 parser.add_argument('--visualise_frames', action='store_true', help='set this flag to visualise frames')
 
 
-def run_batch(batch, model, criterion, binary=False):
+def precision_score(precision_function, targets, preds, avg='weighted'):
+    return torch.tensor(precision_function(targets, preds))
+
+
+def get_metrics(outputs, targets, prefix=''):
+    out = outputs.cpu()
+    tar = targets.cpu()
+    _, preds = torch.max(out, dim=1)
+    metrics = {prefix + 'f1': precision_score(f1_score, tar, preds).item(),
+               prefix + 'accuracy': precision_score(accuracy_score, tar, preds).item(),
+               prefix + 'b-accuracy': precision_score(balanced_accuracy_score, tar, preds).item()
+               }
+    return metrics, preds
+
+
+def run_batch(batch, model, criterion, binary=False, metric_prefix=''):
     """
     Run a single batch
     :param batch: The data for this batch
     :param model: The seq2seq model
     :param criterion: The criterion for the loss. Set to None during evaluation (no training).
     :param binary: Set to True if this is binary classification.
+    :param metric_prefix: Set to a string to prefix each metric key in metric-dict, if desired.
     :return: The required metrics for this batch, as well as the predictions and targets
     """
     dev = device('cuda' if cuda.is_available() else 'cpu')
@@ -76,13 +93,14 @@ def run_batch(batch, model, criterion, binary=False):
     else:
         loss = criterion(outputs, targets)
     # return original targets (not one-hot)
-    return loss, outputs, targets
+    metrics, predictions = get_metrics(outputs, targets, metric_prefix)
+    return loss, predictions, targets, metrics
 
 
 def train(model, train_loader, valid_loader, data_len, valid_len, weights=None, binary=False):
     # Initialize weights & biases logging
     if not args.debug:
-        wandb.init(project='echo_classification', entity='hragnarsd', config={})
+        wandb.init(project='echo_classification', entity='hragnarsd', config={}, mode="offline")
         wandb.config.update(args)
 
     # Set training loss, optimizer and training parameters
@@ -100,16 +118,23 @@ def train(model, train_loader, valid_loader, data_len, valid_len, weights=None, 
         epoch_loss = 0
         epoch_valid_loss = 0
         epoch_targets = []
+        epoch_pred = []
+        epoch_valid_targets = []
+        epoch_valid_pred = []
+        epoch_metrics = {'f1': 0, 'accuracy': 0, 'b-accuracy': 0}
+        epoch_valid_metrics = {'val_f1': 0, 'val_accuracy': 0, 'val_b-accuracy': 0}
 
         # TRAIN
         model.train()
         if not args.debug:
             wandb.watch(model)
         for train_batch in train_loader:
-            loss, pred, targets = run_batch(train_batch, model, criterion, binary=binary)
-            epoch_targets.extend(targets.tolist())
-            # print('* train * loss:', loss.item(), 'pred', pred.argmax(), 'true', true)
+            loss, pred, targets, metrics = run_batch(train_batch, model, criterion, binary=binary)
+            epoch_targets.extend(targets)
+            epoch_pred.extend(pred)
             epoch_loss += loss.item() * args.batch_size
+            for metric in metrics:
+                epoch_metrics[metric] += metrics[metric]
             optimizer.zero_grad()
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), max_norm=1)
@@ -119,23 +144,35 @@ def train(model, train_loader, valid_loader, data_len, valid_len, weights=None, 
         with no_grad():
             model.eval()
             for valid_batch in valid_loader:
-                valid_loss, valid_pred, valid_true = run_batch(valid_batch, model, criterion, binary=binary)
-                # print('* valid * loss:', valid_loss.item(), 'pred', valid_pred.argmax(), 'true', valid_true)
-                epoch_valid_loss += valid_loss.item() * args.batch_size
+                val_loss, val_pred, val_targets, val_metrics = run_batch(valid_batch, model, criterion, binary=binary,
+                                                                         metric_prefix='val_')
+                epoch_valid_targets.extend(targets)
+                epoch_valid_pred.extend(pred)
+                epoch_valid_loss += val_loss.item() * args.batch_size
+                for metric in val_metrics:
+                    epoch_valid_metrics[metric] += val_metrics[metric]
 
         print('epoch:', epoch)
         print('train_loss:', epoch_loss / data_len)
         print('valid loss:', epoch_valid_loss / valid_len)
+        for metric in epoch_metrics:
+            print(metric, ":", metrics[metric])
+        for metric in epoch_valid_metrics:
+            print(metric, ":", val_metrics[metric])
 
         # Todo: Create a metric dictionary that can be updated with more metrics.
         if not args.debug:
-            wandb.log({
+            log_dict = {
                 "valid loss": epoch_valid_loss / valid_len,
                 "train loss": epoch_loss / data_len
-            })
+            }
+            log_dict.update(epoch_metrics)
+            epoch_metrics.update(epoch_valid_metrics)
+            wandb.log(log_dict, offline=True)
         scheduler.step(epoch_valid_loss / valid_len)  # Update learning rate scheduler
         if args.debug:
-            vals, cnts = np.unique(epoch_targets, return_counts=True)
+            target_lst = [t.item() for t in epoch_targets]
+            vals, cnts = np.unique(target_lst, return_counts=True)
             print('epoch target distribution')
             for val, cnt in zip(vals, cnts):
                 print(val, ':', cnt)
