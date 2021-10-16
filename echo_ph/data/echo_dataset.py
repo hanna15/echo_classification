@@ -49,6 +49,7 @@ class EchoDataset(Dataset):
             self.cache_dir = os.path.join(os.path.expanduser(cache_dir), str(scaling_factor))
         self.label_path = label_file_path
         self.visualise_frames = visualise_frames
+        self.scaling_factor = scaling_factor
 
         samples = np.load(index_file_path)
         t = time()
@@ -86,7 +87,8 @@ class EchoDataset(Dataset):
             return None, None
         try:  # Try to get segmentations
             sample_w_ending = str(sample) + 'KAPAP'
-            segm = SegmentationAnalyser(sample_w_ending, 'segmented_results')
+            # Todo: have user pass in segmentation result directory themselves
+            segm = SegmentationAnalyser(sample_w_ending, os.path.join('segmented_results', str(self.scaling_factor)))
         except:
             print(f'Skipping sample {sample}, as the segmented results for it does not exist')
             return None, None
