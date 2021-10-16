@@ -157,9 +157,9 @@ def train(model, train_loader, valid_loader, data_len, valid_len, weights=None, 
         print('train_loss:', epoch_loss / data_len)
         print('valid loss:', epoch_valid_loss / valid_len)
         for metric in epoch_metrics:
-            print(metric, ":", metrics[metric])
+            print(metric, ":", epoch_metrics[metric] / data_len)
         for metric in epoch_valid_metrics:
-            print(metric, ":", val_metrics[metric])
+            print(metric, ":", epoch_valid_metrics[metric] / valid_len)
 
         # Todo: Create a metric dictionary that can be updated with more metrics.
         if not args.debug:
