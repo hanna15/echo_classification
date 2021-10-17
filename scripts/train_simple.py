@@ -48,7 +48,7 @@ parser.add_argument('--cooldown', type=float, default=0, help='cool-down for red
 parser.add_argument('--pretrained', action='store_true', help='Set this flag to use pre-trained resnet')
 
 # Class imbalance
-parser.add_argument('--class_balance_per_epoch', action='store_true',
+parser.add_argument('-b', '--class_balance_per_epoch', action='store_true',
                     help='set this flag to have ca. equal no. samples of each class per epoch / oversampling')
 parser.add_argument('--weight_loss', action='store_true',
                     help='set this flag to weight loss, according to class imbalance')
