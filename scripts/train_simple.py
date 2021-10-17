@@ -6,7 +6,7 @@ from torch import cuda, device
 from torch import nn, optim, no_grad
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from torchvision import models, transforms
-from PIL import Image
+from torchvision.transforms import InterpolationMode
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 import wandb
 from echo_ph.data.echo_dataset import EchoDataset
@@ -153,7 +153,7 @@ def train(model, train_loader, valid_loader, data_len, valid_len, weights=None, 
             model.eval()
             for valid_batch in valid_loader:
                 val_loss, val_pred, val_targets, val_metrics = run_batch(valid_batch, model, criterion, binary=binary,
-                                                                        metric_prefix='val_')
+                                                                         metric_prefix='val_')
                 epoch_valid_targets.extend(val_targets)
                 epoch_valid_preds.extend(val_pred)
                 epoch_valid_loss += val_loss.item() * args.batch_size
@@ -215,7 +215,7 @@ def main():
     # Data
     # First resize, then normalize (!)
     base_transforms = [transforms.ToPILImage(), transforms.Resize(size=(128, 128),
-                                                                  interpolation=Image.BICUBIC),
+                                                                  interpolation=InterpolationMode.BICUBIC),
                        transforms.ToTensor(), Normalize()]
     transform_list_train = base_transforms
     if args.augment:
