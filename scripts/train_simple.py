@@ -45,6 +45,7 @@ parser.add_argument('--decay_patience', type=float, default=1000,
                     help='Number of epochs to decay lr for decay on plateau')
 parser.add_argument('--min_lr', type=float, default=0.0, help='Min learning rate for reducing lr')
 parser.add_argument('--cooldown', type=float, default=0, help='cool-down for reducing lr on plateau')
+parser.add_argument('--pretrained', action='store_true', help='Set this flag to use pre-trained resnet')
 
 # Class imbalance
 parser.add_argument('--class_balance_per_epoch', action='store_true',
@@ -190,7 +191,7 @@ def train(model, train_loader, valid_loader, data_len, valid_len, weights=None, 
 
 
 def get_resnet(num_classes=3):
-    model = models.resnet18(pretrained=True)  # TODO: Later move  to resnet-50 ==> better to start small.
+    model = models.resnet18(pretrained=args.pretrained) # TODO: Later move  to resnet-50 ==> better to start small.
     in_channels = 1
     # Change the input layer to take Grayscale image, instead of RGB images (set in_channels as 1)
     # original definition of the first layer on the ResNet class
