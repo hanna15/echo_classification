@@ -171,7 +171,7 @@ def train(model, train_loader, valid_loader, data_len, valid_len, weights=None, 
             }
             log_dict.update(epoch_metrics)
             epoch_metrics.update(epoch_valid_metrics)
-            wandb.log(log_dict, offline=True)
+            wandb.log(log_dict)
         scheduler.step(epoch_valid_loss / valid_len)  # Update learning rate scheduler
         if args.debug:
             target_lst = [t.item() for t in epoch_targets]
