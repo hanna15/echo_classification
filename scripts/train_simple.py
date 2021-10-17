@@ -161,33 +161,38 @@ def train(model, train_loader, valid_loader, data_len, valid_len, weights=None, 
                 for metric in val_metrics:
                     epoch_valid_metrics[metric] += val_metrics[metric]
 
-        print('*** epoch:', epoch, '***')
-        print('train_loss:', epoch_loss / data_len)
-        print('valid loss:', epoch_valid_loss / valid_len)
-
-        for metric in epoch_metrics:
-            epoch_metrics[metric] /= num_batches
-            print(metric, ":", epoch_metrics[metric])
-        for metric in epoch_valid_metrics:
-            epoch_valid_metrics[metric] /= valid_num_batches
-            print(metric, ":", epoch_valid_metrics[metric])
-
-        # Todo: Create a metric dictionary that can be updated with more metrics.
-        if not args.debug:
-            log_dict = {
-                "valid loss": epoch_valid_loss / valid_len,
-                "train loss": epoch_loss / data_len
-            }
-            log_dict.update(epoch_metrics)
-            log_dict.update(epoch_valid_metrics)
-            wandb.log(log_dict)
         scheduler.step(epoch_valid_loss / valid_len)  # Update learning rate scheduler
-        if args.debug:
-            target_lst = [t.item() for t in epoch_targets]
-            vals, cnts = np.unique(target_lst, return_counts=True)
-            print('epoch target distribution')
-            for val, cnt in zip(vals, cnts):
-                print(val, ':', cnt)
+
+        if epoch % 10 == 0:  # log every 10th epoch
+            print('*** epoch:', epoch, '***')
+            print('train_loss:', epoch_loss / data_len)
+            print('valid loss:', epoch_valid_loss / valid_len)
+
+            # for metric in epoch_metrics:
+            #     epoch_metrics[metric] /= num_batches
+            #     print(metric, ":", epoch_metrics[metric])
+            # for metric in epoch_valid_metrics:
+            #     epoch_valid_metrics[metric] /= valid_num_batches
+            #     print(metric, ":", epoch_valid_metrics[metric])
+
+            # Todo: Create a metric dictionary that can be updated with more metrics.
+            if not args.debug:
+                log_dict = {
+                    "epoch": epoch,
+                    "lr": optimizer.param_groups[0]['lr'],  # actual learning rate (changes becaues of sceduler)
+                    "valid loss": epoch_valid_loss / valid_len,
+                    "train loss": epoch_loss / data_len
+                }
+                log_dict.update(epoch_metrics)
+                log_dict.update(epoch_valid_metrics)
+                wandb.log(log_dict)
+
+            if args.debug:
+                target_lst = [t.item() for t in epoch_targets]
+                vals, cnts = np.unique(target_lst, return_counts=True)
+                print('epoch target distribution')
+                for val, cnt in zip(vals, cnts):
+                    print(val, ':', cnt)
 
 
 def get_resnet(num_classes=3):
