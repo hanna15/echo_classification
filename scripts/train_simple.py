@@ -160,7 +160,7 @@ def train(model, train_loader, valid_loader, data_len, valid_len, weights=None, 
                 for metric in val_metrics:
                     epoch_valid_metrics[metric] += val_metrics[metric]
 
-        print('epoch:', epoch)
+        print('*** epoch:', epoch, '***')
         print('train_loss:', epoch_loss / data_len)
         print('valid loss:', epoch_valid_loss / valid_len)
 
