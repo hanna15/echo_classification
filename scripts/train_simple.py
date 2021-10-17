@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import os
+import math
 from torch import cuda, device
 from torch import nn, optim, no_grad
 from torch.utils.data import DataLoader, WeightedRandomSampler
@@ -10,7 +11,7 @@ from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 import wandb
 from echo_ph.data.echo_dataset import EchoDataset
 from utils.transforms import Normalize, RandomResize, AugmentSimpleIntensityOnly
-from sklearn.metrics import f1_score, accuracy_score, balanced_accuracy_score
+from sklearn.metrics import f1_score, accuracy_score, balanced_accuracy_score, roc_auc_score
 
 """
 This script trains a basic pre-trained resnet-50 and performs image classification on the first frame of each 
@@ -65,10 +66,15 @@ def get_metrics(outputs, targets, prefix='', binary=False):
     if binary:
         avg = 'binary'
     else:
-        avg = 'micro'  # Todo: For imbalanced multi-class, micro is better than macro
-    metrics = {prefix + 'f1': f1_score(tar, preds, average=avg),
-               prefix + 'accuracy': accuracy_score(tar, preds),
-               prefix + 'b-accuracy': balanced_accuracy_score(tar, preds)
+        avg = 'micro'  # For imbalanced multi-class, micro is better than macro
+    metrics = {  # zero_div=0, sets f1 to 1 (corr), when all targets and preds are negative & NOT give warning.
+                 # default is 'warn', which sets f1 to 0, and further raises a warning
+                prefix + 'f1': f1_score(tar, preds, average=avg, zero_division=1),
+                prefix + 'accuracy': accuracy_score(tar, preds),
+                prefix + 'b-accuracy': balanced_accuracy_score(tar, preds)  # ,
+                # prefix + 'roc_auc': roc_auc_score(tar, preds)
+                # Todo: roc_auc is undefined if batch gt has only 1 class
+                # TODO: => thus change all metrics to be calculated per-EPOCH (!), instead of per-batch
                }
     return metrics, preds
 
@@ -113,17 +119,18 @@ def train(model, train_loader, valid_loader, data_len, valid_len, weights=None, 
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=args.decay_factor, patience=args.decay_patience,
                                                      min_lr=args.min_lr, cooldown=args.cooldown)
 
+    valid_num_batches = math.ceil(valid_len / args.batch_size)
+    num_batches = math.ceil(data_len / args.batch_size)
     print("Start training on", data_len, "training samples, and", valid_len, "validation samples")
-
     for epoch in range(args.max_epochs):
         epoch_loss = 0
         epoch_valid_loss = 0
         epoch_targets = []
-        epoch_pred = []
+        epoch_preds = []
         epoch_valid_targets = []
-        epoch_valid_pred = []
-        epoch_metrics = {'f1': 0, 'accuracy': 0, 'b-accuracy': 0}
-        epoch_valid_metrics = {'val_f1': 0, 'val_accuracy': 0, 'val_b-accuracy': 0}
+        epoch_valid_preds = []
+        epoch_metrics = {'f1': 0, 'accuracy': 0, 'b-accuracy': 0, 'roc_auc': 0}
+        epoch_valid_metrics = {'val_f1': 0, 'val_accuracy': 0, 'val_b-accuracy': 0, 'roc_auc': 0}
 
         # TRAIN
         model.train()
@@ -132,7 +139,7 @@ def train(model, train_loader, valid_loader, data_len, valid_len, weights=None, 
         for train_batch in train_loader:
             loss, pred, targets, metrics = run_batch(train_batch, model, criterion, binary=binary)
             epoch_targets.extend(targets)
-            epoch_pred.extend(pred)
+            epoch_preds.extend(pred)
             epoch_loss += loss.item() * args.batch_size
             for metric in metrics:
                 epoch_metrics[metric] += metrics[metric]
@@ -146,9 +153,9 @@ def train(model, train_loader, valid_loader, data_len, valid_len, weights=None, 
             model.eval()
             for valid_batch in valid_loader:
                 val_loss, val_pred, val_targets, val_metrics = run_batch(valid_batch, model, criterion, binary=binary,
-                                                                         metric_prefix='val_')
-                epoch_valid_targets.extend(targets)
-                epoch_valid_pred.extend(pred)
+                                                                        metric_prefix='val_')
+                epoch_valid_targets.extend(val_targets)
+                epoch_valid_preds.extend(val_pred)
                 epoch_valid_loss += val_loss.item() * args.batch_size
                 for metric in val_metrics:
                     epoch_valid_metrics[metric] += val_metrics[metric]
@@ -156,11 +163,12 @@ def train(model, train_loader, valid_loader, data_len, valid_len, weights=None, 
         print('epoch:', epoch)
         print('train_loss:', epoch_loss / data_len)
         print('valid loss:', epoch_valid_loss / valid_len)
+
         for metric in epoch_metrics:
-            epoch_metrics[metric] /= data_len
+            epoch_metrics[metric] /= num_batches
             print(metric, ":", epoch_metrics[metric])
         for metric in epoch_valid_metrics:
-            epoch_valid_metrics[metric] /= valid_len
+            epoch_valid_metrics[metric] /= valid_num_batches
             print(metric, ":", epoch_valid_metrics[metric])
 
         # Todo: Create a metric dictionary that can be updated with more metrics.
@@ -236,7 +244,7 @@ def main():
     if args.class_balance_per_epoch:
         sampler = WeightedRandomSampler(train_dataset.example_weights, train_dataset.num_samples)
         train_loader = DataLoader(train_dataset, args.batch_size, shuffle=False, num_workers=num_workers,
-                                  sampler=sampler)
+                                  sampler=sampler)  # Sampler is mutually exclusive with shuffle
     else:
         train_loader = DataLoader(train_dataset, args.batch_size, shuffle=True, num_workers=num_workers)
     valid_loader = DataLoader(valid_dataset, args.batch_size, shuffle=False, num_workers=num_workers)
