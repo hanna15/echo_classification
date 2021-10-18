@@ -111,7 +111,7 @@ def train(model, train_loader, valid_loader, data_len, valid_len, weights=None, 
     if not args.debug:
         # wandb.init(project='echo_classification', entity='hragnarsd', config={}, mode="offline", sync_tensorboard=True)
         # wandb.config.update(args)
-        writer = SummaryWriter(log_dir='tensorboard_experiments')
+        writer = SummaryWriter(log_dir='tb_experiments')
 
     # Set training loss, optimizer and training parameters
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
@@ -180,8 +180,8 @@ def train(model, train_loader, valid_loader, data_len, valid_len, weights=None, 
             # Todo: Create a metric dictionary that can be updated with more metrics.
             if not args.debug:
                 log_dict = {
-                    "epoch": epoch,
-                    "lr": optimizer.param_groups[0]['lr'],  # Actual learning rate (changes because of scheduler)
+                    #"epoch": epoch,
+                    #"lr": optimizer.param_groups[0]['lr'],  # Actual learning rate (changes because of scheduler)
                     "valid loss": epoch_valid_loss / valid_len,
                     "train loss": epoch_loss / data_len
                 }
@@ -190,7 +190,8 @@ def train(model, train_loader, valid_loader, data_len, valid_len, weights=None, 
                 # wandb.log(log_dict)
 
                 writer.add_hparams(
-                    {"init_lr": args.lr, "bsize": args.batch_size, "augment": args.augment},
+                    {"init_lr": args.lr, "bsize": args.batch_size, "augment": args.augment,
+                     "pretrained": args.pretrained},
                     log_dict
                 )
 
@@ -205,7 +206,7 @@ def train(model, train_loader, valid_loader, data_len, valid_len, weights=None, 
 
 
 def get_resnet(num_classes=3):
-    model = models.resnet18(pretrained=args.pretrained) # TODO: Later move  to resnet-50 ==> better to start small.
+    model = models.resnet18(pretrained=args.pretrained)  # TODO: Later move  to resnet-50 ==> better to start small.
     in_channels = 1
     # Change the input layer to take Grayscale image, instead of RGB images (set in_channels as 1)
     # original definition of the first layer on the ResNet class
