@@ -113,13 +113,13 @@ def run_batch(batch, model, criterion, binary=False, metric_prefix=''):
 def get_run_name():
     run_name = 'lt_' + args.label_type + '.lr_' + str(args.lr) + '.batch_' + str(args.batch_size)
     if args.pretrained:
-        run_name += '_pre.'
+        run_name += '_pre'
     if args.augment:
-        run_name += '_aug.'
+        run_name += '_aug'
     if args.class_balance_per_epoch:
-        run_name += '_bal.'
+        run_name += '_bal'
     if args.weight_loss:
-        run_name += '_weight.'
+        run_name += '_weight'
     return run_name
 
 
