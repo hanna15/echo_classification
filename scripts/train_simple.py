@@ -13,6 +13,7 @@ import wandb
 from echo_ph.data.echo_dataset import EchoDataset
 from utils.transforms import Normalize, RandomResize, AugmentSimpleIntensityOnly
 from sklearn.metrics import f1_score, accuracy_score, balanced_accuracy_score, roc_auc_score
+import warnings
 
 """
 This script trains a basic pre-trained resnet-50 and performs image classification on the first frame of each 
@@ -58,6 +59,9 @@ parser.add_argument('--augment', action='store_true',
 # General parameters
 parser.add_argument('--debug', action='store_true', help='set this flag when debugging, to not connect to wandb, etc')
 parser.add_argument('--visualise_frames', action='store_true', help='set this flag to visualise frames')
+parser.add_argument('--log_freq', type=int, default=5,
+                    help='How often to log to tensorboard and w&B, and save models. Save logs every log_freq th epoch, '
+                         'but save models every (log_freq * 2) th epoch.')
 
 
 def get_metrics(outputs, targets, prefix='', binary=False):
@@ -71,9 +75,9 @@ def get_metrics(outputs, targets, prefix='', binary=False):
         avg = 'micro'  # For imbalanced multi-class, micro is better than macro
     metrics = {  # zero_div=0, sets f1 to 1 (corr), when all targets and preds are negative & NOT give warning.
                  # default is 'warn', which sets f1 to 0, and further raises a warning
-                prefix + 'f1': f1_score(tar, preds, average=avg, zero_division=1),
-                prefix + 'accuracy': accuracy_score(tar, preds),
-                prefix + 'b-accuracy': balanced_accuracy_score(tar, preds)  # ,
+                'f1' + '/' + prefix: f1_score(tar, preds, average=avg, zero_division=1),
+                'accuracy' + '/' + prefix: accuracy_score(tar, preds),
+                'b-accuracy' + '/' + prefix: balanced_accuracy_score(tar, preds)  # ,
                 # prefix + 'roc_auc': roc_auc_score(tar, preds)
                 # Todo: roc_auc is undefined if batch gt has only 1 class
                 # TODO: => thus change all metrics to be calculated per-EPOCH (!), instead of per-batch
@@ -106,13 +110,26 @@ def run_batch(batch, model, criterion, binary=False, metric_prefix=''):
     return loss, predictions, targets, metrics
 
 
+def get_run_name():
+    run_name = 'lt_' + args.label_type + '.lr_' + str(args.lr) + '.batch_' + str(args.batch_size)
+    if args.pretrained:
+        run_name += '_pre.'
+    if args.augment:
+        run_name += '_aug.'
+    if args.class_balance_per_epoch:
+        run_name += '_bal.'
+    if args.weight_loss:
+        run_name += '_weight.'
+    return run_name
+
+
 def train(model, train_loader, valid_loader, data_len, valid_len, weights=None, binary=False):
     # Initialize weights & biases logging
     if not args.debug:
         # wandb.init(project='echo_classification', entity='hragnarsd', config={}, mode="offline", sync_tensorboard=True)
         # wandb.config.update(args)
-        writer = SummaryWriter(log_dir='tb_experiments')
-
+        run_name = get_run_name()
+        writer = SummaryWriter(log_dir=os.path.join('tb_runs', run_name))
     # Set training loss, optimizer and training parameters
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     if binary:
@@ -132,15 +149,15 @@ def train(model, train_loader, valid_loader, data_len, valid_len, weights=None, 
         epoch_preds = []
         epoch_valid_targets = []
         epoch_valid_preds = []
-        epoch_metrics = {'f1': 0, 'accuracy': 0, 'b-accuracy': 0}  #, 'roc_auc': 0}
-        epoch_valid_metrics = {'val_f1': 0, 'val_accuracy': 0, 'val_b-accuracy': 0}  #, 'roc_auc': 0}
+        epoch_metrics = {'f1/train': 0, 'accuracy/train': 0, 'b-accuracy/train': 0}  #, 'roc_auc': 0}
+        epoch_valid_metrics = {'f1/val': 0, 'accuracy/val': 0, 'b-accuracy/val': 0}  #, 'roc_auc': 0}
 
         # TRAIN
         model.train()
         # if not args.debug:
             # wandb.watch(model)
         for train_batch in train_loader:
-            loss, pred, targets, metrics = run_batch(train_batch, model, criterion, binary=binary)
+            loss, pred, targets, metrics = run_batch(train_batch, model, criterion, binary=binary, metric_prefix='train')
             epoch_targets.extend(targets)
             epoch_preds.extend(pred)
             epoch_loss += loss.item() * args.batch_size
@@ -156,7 +173,7 @@ def train(model, train_loader, valid_loader, data_len, valid_len, weights=None, 
             model.eval()
             for valid_batch in valid_loader:
                 val_loss, val_pred, val_targets, val_metrics = run_batch(valid_batch, model, criterion, binary=binary,
-                                                                         metric_prefix='val_')
+                                                                         metric_prefix='val')
                 epoch_valid_targets.extend(val_targets)
                 epoch_valid_preds.extend(val_pred)
                 epoch_valid_loss += val_loss.item() * args.batch_size
@@ -165,7 +182,7 @@ def train(model, train_loader, valid_loader, data_len, valid_len, weights=None, 
 
         scheduler.step(epoch_valid_loss / valid_len)  # Update learning rate scheduler
 
-        if epoch % 10 == 0:  # log every 10th epoch
+        if epoch % args.log_freq == 0:  # log every 10th epoch
             print('*** epoch:', epoch, '***')
             print('train_loss:', epoch_loss / data_len)
             print('valid loss:', epoch_valid_loss / valid_len)
@@ -178,24 +195,29 @@ def train(model, train_loader, valid_loader, data_len, valid_len, weights=None, 
                 print(metric, ":", epoch_valid_metrics[metric])
 
             # Todo: Create a metric dictionary that can be updated with more metrics.
-            if not args.debug:
+            if not args.debug:  # log and save results
                 log_dict = {
-                    #"epoch": epoch,
-                    #"lr": optimizer.param_groups[0]['lr'],  # Actual learning rate (changes because of scheduler)
-                    "valid loss": epoch_valid_loss / valid_len,
-                    "train loss": epoch_loss / data_len
+                    "epoch": epoch,
+                    "lr": optimizer.param_groups[0]['lr'],  # Actual learning rate (changes because of scheduler)
+                    "loss/valid": epoch_valid_loss / valid_len,
+                    "loss/train": epoch_loss / data_len
                 }
                 log_dict.update(epoch_metrics)
                 log_dict.update(epoch_valid_metrics)
                 # wandb.log(log_dict)
+                for metric_key in log_dict:
+                    step = int(epoch / args.log_freq)
+                    writer.add_scalar(metric_key, log_dict[metric_key], step)
 
-                writer.add_hparams(
-                    {"init_lr": args.lr, "bsize": args.batch_size, "augment": args.augment,
-                     "pretrained": args.pretrained},
-                    log_dict
-                )
+            if epoch % (2 * args.log_freq) == 0:  # save model checkpoints at 2x lower resolution than saving logs
+                torch.save(model.state_dict(), os.path.join('models', run_name + '.pt'))
 
-            if args.debug:
+                # writer.add_hparams(
+                #     {"init_lr": args.lr, "bsize": args.batch_size, "augment": args.augment, "pretrained": args.pretrained},
+                #     log_dict
+                # )
+
+            else:
                 target_lst = [t.item() for t in epoch_targets]
                 vals, cnts = np.unique(target_lst, return_counts=True)
                 print('epoch target distribution')
@@ -220,6 +242,8 @@ def get_resnet(num_classes=3):
 
 
 def main():
+    if not args.debug:
+        warnings.simplefilter("ignore")  # ignore warnings, so they don't fill output log files
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('start training on device', device)
     binary = False
@@ -267,6 +291,7 @@ def main():
 
     # Model
     model = get_resnet(num_classes=len(train_dataset.labels)).to(device)
+    os.makedirs('models', exist_ok=True) # create model results dir, if not exists
     train(model, train_loader, valid_loader, len(train_dataset), len(valid_dataset), weights=class_weights,
           binary=binary)
 
