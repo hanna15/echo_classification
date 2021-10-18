@@ -5,6 +5,7 @@ import math
 from torch import cuda, device
 from torch import nn, optim, no_grad
 from torch.utils.data import DataLoader, WeightedRandomSampler
+from torch.utils.tensorboard import SummaryWriter
 from torchvision import models, transforms
 from torchvision.transforms import InterpolationMode
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
@@ -108,8 +109,9 @@ def run_batch(batch, model, criterion, binary=False, metric_prefix=''):
 def train(model, train_loader, valid_loader, data_len, valid_len, weights=None, binary=False):
     # Initialize weights & biases logging
     if not args.debug:
-        wandb.init(project='echo_classification', entity='hragnarsd', config={}, mode="offline")
-        wandb.config.update(args)
+        # wandb.init(project='echo_classification', entity='hragnarsd', config={}, mode="offline", sync_tensorboard=True)
+        # wandb.config.update(args)
+        writer = SummaryWriter(log_dir='tensorboard_experiments')
 
     # Set training loss, optimizer and training parameters
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
@@ -130,13 +132,13 @@ def train(model, train_loader, valid_loader, data_len, valid_len, weights=None, 
         epoch_preds = []
         epoch_valid_targets = []
         epoch_valid_preds = []
-        epoch_metrics = {'f1': 0, 'accuracy': 0, 'b-accuracy': 0, 'roc_auc': 0}
-        epoch_valid_metrics = {'val_f1': 0, 'val_accuracy': 0, 'val_b-accuracy': 0, 'roc_auc': 0}
+        epoch_metrics = {'f1': 0, 'accuracy': 0, 'b-accuracy': 0}  #, 'roc_auc': 0}
+        epoch_valid_metrics = {'val_f1': 0, 'val_accuracy': 0, 'val_b-accuracy': 0}  #, 'roc_auc': 0}
 
         # TRAIN
         model.train()
-        if not args.debug:
-            wandb.watch(model)
+        # if not args.debug:
+            # wandb.watch(model)
         for train_batch in train_loader:
             loss, pred, targets, metrics = run_batch(train_batch, model, criterion, binary=binary)
             epoch_targets.extend(targets)
@@ -168,24 +170,29 @@ def train(model, train_loader, valid_loader, data_len, valid_len, weights=None, 
             print('train_loss:', epoch_loss / data_len)
             print('valid loss:', epoch_valid_loss / valid_len)
 
-            # for metric in epoch_metrics:
-            #     epoch_metrics[metric] /= num_batches
-            #     print(metric, ":", epoch_metrics[metric])
-            # for metric in epoch_valid_metrics:
-            #     epoch_valid_metrics[metric] /= valid_num_batches
-            #     print(metric, ":", epoch_valid_metrics[metric])
+            for metric in epoch_metrics:
+                epoch_metrics[metric] /= num_batches
+                print(metric, ":", epoch_metrics[metric])
+            for metric in epoch_valid_metrics:
+                epoch_valid_metrics[metric] /= valid_num_batches
+                print(metric, ":", epoch_valid_metrics[metric])
 
             # Todo: Create a metric dictionary that can be updated with more metrics.
             if not args.debug:
                 log_dict = {
                     "epoch": epoch,
-                    "lr": optimizer.param_groups[0]['lr'],  # actual learning rate (changes becaues of sceduler)
+                    "lr": optimizer.param_groups[0]['lr'],  # Actual learning rate (changes because of scheduler)
                     "valid loss": epoch_valid_loss / valid_len,
                     "train loss": epoch_loss / data_len
                 }
                 log_dict.update(epoch_metrics)
                 log_dict.update(epoch_valid_metrics)
-                wandb.log(log_dict)
+                # wandb.log(log_dict)
+
+                writer.add_hparams(
+                    {"init_lr": args.lr, "bsize": args.batch_size, "augment": args.augment},
+                    log_dict
+                )
 
             if args.debug:
                 target_lst = [t.item() for t in epoch_targets]
@@ -193,6 +200,8 @@ def train(model, train_loader, valid_loader, data_len, valid_len, weights=None, 
                 print('epoch target distribution')
                 for val, cnt in zip(vals, cnts):
                     print(val, ':', cnt)
+    if not args.debug:
+        writer.close()
 
 
 def get_resnet(num_classes=3):
