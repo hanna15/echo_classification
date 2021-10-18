@@ -50,7 +50,7 @@ parser.add_argument('--cooldown', type=float, default=0, help='cool-down for red
 parser.add_argument('--pretrained', action='store_true', help='Set this flag to use pre-trained resnet')
 
 # Class imbalance
-parser.add_argument('-b', '--class_balance_per_epoch', action='store_true',
+parser.add_argument('--class_balance_per_epoch', action='store_true',
                     help='set this flag to have ca. equal no. samples of each class per epoch / oversampling')
 parser.add_argument('--weight_loss', action='store_true',
                     help='set this flag to weight loss, according to class imbalance')
@@ -62,13 +62,41 @@ parser.add_argument('--visualise_frames', action='store_true', help='set this fl
 parser.add_argument('--log_freq', type=int, default=5,
                     help='How often to log to tensorboard and w&B, and save models. Save logs every log_freq th epoch, '
                          'but save models every (log_freq * 2) th epoch.')
+parser.add_argument('--tb_dir', type=str, default='tb_runs',
+                    help='Tensorboard directory - where tensorboard logs are stored.')
+
+
+def get_run_name():
+    """
+    Returns a 'semi'-unique name according to most important arguments.
+    Can be used for model name and tb log names
+    :return:
+    """
+    run_name = 'lt_' + args.label_type + '.lr_' + str(args.lr) + '.batch_' + str(args.batch_size) + \
+               '.df_' + str(args.decay_factor) + 'dp_' + str(args.decay_patience)
+    if args.pretrained:
+        run_name += '_pre'
+    if args.augment:
+        run_name += '_aug'
+    if args.class_balance_per_epoch:
+        run_name += '_bal'
+    if args.weight_loss:
+        run_name += '_weight'
+    return run_name
 
 
 def get_metrics(outputs, targets, prefix='', binary=False):
+    """
+    Get metrics per batch
+    :param outputs: Model outputs (before max)
+    :param targets: Targets / true labels
+    :param prefix: What to prefix the metric with - set to 'train' or 'valid' or 'test'
+    :param binary: Set to true if this is for binary classification
+    :return: Dictionary containing the metrics and the model predictions (arg maxed outputs)
+    """
     out = outputs.cpu()
     tar = targets.cpu()
     _, preds = torch.max(out, dim=1)
-    # Determine averaging strategies for f1-score
     if binary:
         avg = 'binary'
     else:
@@ -110,26 +138,9 @@ def run_batch(batch, model, criterion, binary=False, metric_prefix=''):
     return loss, predictions, targets, metrics
 
 
-def get_run_name():
-    run_name = 'lt_' + args.label_type + '.lr_' + str(args.lr) + '.batch_' + str(args.batch_size)
-    if args.pretrained:
-        run_name += '_pre'
-    if args.augment:
-        run_name += '_aug'
-    if args.class_balance_per_epoch:
-        run_name += '_bal'
-    if args.weight_loss:
-        run_name += '_weight'
-    return run_name
+def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run_name, weights=None, binary=False,
+          use_wandb=False):
 
-
-def train(model, train_loader, valid_loader, data_len, valid_len, weights=None, binary=False):
-    # Initialize weights & biases logging
-    if not args.debug:
-        # wandb.init(project='echo_classification', entity='hragnarsd', config={}, mode="offline", sync_tensorboard=True)
-        # wandb.config.update(args)
-        run_name = get_run_name()
-        writer = SummaryWriter(log_dir=os.path.join('tb_runs', run_name))
     # Set training loss, optimizer and training parameters
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     if binary:
@@ -149,13 +160,12 @@ def train(model, train_loader, valid_loader, data_len, valid_len, weights=None, 
         epoch_preds = []
         epoch_valid_targets = []
         epoch_valid_preds = []
+
         epoch_metrics = {'f1/train': 0, 'accuracy/train': 0, 'b-accuracy/train': 0}  #, 'roc_auc': 0}
         epoch_valid_metrics = {'f1/val': 0, 'accuracy/val': 0, 'b-accuracy/val': 0}  #, 'roc_auc': 0}
 
         # TRAIN
         model.train()
-        # if not args.debug:
-            # wandb.watch(model)
         for train_batch in train_loader:
             loss, pred, targets, metrics = run_batch(train_batch, model, criterion, binary=binary, metric_prefix='train')
             epoch_targets.extend(targets)
@@ -204,18 +214,15 @@ def train(model, train_loader, valid_loader, data_len, valid_len, weights=None, 
                 }
                 log_dict.update(epoch_metrics)
                 log_dict.update(epoch_valid_metrics)
-                # wandb.log(log_dict)
+                if use_wandb:
+                    wandb.log(log_dict)
                 for metric_key in log_dict:
                     step = int(epoch / args.log_freq)
-                    writer.add_scalar(metric_key, log_dict[metric_key], step)
+                    tb_writer.add_scalar(metric_key, log_dict[metric_key], step)
 
-            if epoch % (2 * args.log_freq) == 0:  # save model checkpoints at 2x lower resolution than saving logs
-                torch.save(model.state_dict(), os.path.join('models', run_name + '.pt'))
+                if epoch % (2 * args.log_freq) == 0:  # save model checkpoints at 2x lower resolution than saving logs
+                    torch.save(model.state_dict(), os.path.join('models', run_name + '.pt'))
 
-                # writer.add_hparams(
-                #     {"init_lr": args.lr, "bsize": args.batch_size, "augment": args.augment, "pretrained": args.pretrained},
-                #     log_dict
-                # )
 
             else:
                 target_lst = [t.item() for t in epoch_targets]
@@ -224,7 +231,7 @@ def train(model, train_loader, valid_loader, data_len, valid_len, weights=None, 
                 for val, cnt in zip(vals, cnts):
                     print(val, ':', cnt)
     if not args.debug:
-        writer.close()
+        tb_writer.close()
 
 
 def get_resnet(num_classes=3):
@@ -242,18 +249,26 @@ def get_resnet(num_classes=3):
 
 
 def main():
+    run_name = get_run_name()
+    use_wandb = False  # Set this to false for now as can't seem to use on cluster
     if not args.debug:
-        warnings.simplefilter("ignore")  # ignore warnings, so they don't fill output log files
+        warnings.simplefilter("ignore")  # Ignore warnings, so they don't fill output log files
+        # Initialize  logging if not debug phase
+        if use_wandb:
+            wandb.init(project='echo_classification', entity='hragnarsd', config={}, mode="offline")
+            wandb.config.update(args)
+        tb_writer = SummaryWriter(log_dir=os.path.join(args.tb_dir, run_name))
+    else:
+        tb_writer = None
+
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print('start training on device', device)
-    binary = False
-    if args.label_type.startswith('2class'):
-        binary = True
+    print('Will be training on device', device)
+    binary = True if args.label_type.startswith('2class') else False
     label_path = os.path.join('label_files', 'labels_' + args.label_type + '.pkl')
     train_index_file_path = os.path.join('index_files', 'train_samples_' + args.label_type + '.npy')
     test_index_file_path = os.path.join('index_files', 'test_samples_' + args.label_type + '.npy')
-    # Data
-    # First resize, then normalize (!)
+
+    # Data & Transforms (TODO: Later have a separate transforms class)
     base_transforms = [transforms.ToPILImage(), transforms.Resize(size=(128, 128),
                                                                   interpolation=InterpolationMode.BICUBIC),
                        transforms.ToTensor(), Normalize()]
@@ -272,7 +287,7 @@ def main():
                                 transform=transforms_train, scaling_factor=args.scaling_factor, procs=args.num_workers,
                                 visualise_frames=args.visualise_frames)
     if args.weight_loss:
-        class_weights = torch.tensor(train_dataset.class_weights, dtype=torch.float)
+        class_weights = torch.tensor(train_dataset.class_weights, dtype=torch.float).to(device)
     else:
         class_weights = None
     valid_dataset = EchoDataset(test_index_file_path, label_path, videos_dir=args.videos_dir, cache_dir=args.cache_dir,
@@ -292,8 +307,8 @@ def main():
     # Model
     model = get_resnet(num_classes=len(train_dataset.labels)).to(device)
     os.makedirs('models', exist_ok=True) # create model results dir, if not exists
-    train(model, train_loader, valid_loader, len(train_dataset), len(valid_dataset), weights=class_weights,
-          binary=binary)
+    train(model, train_loader, valid_loader, len(train_dataset), len(valid_dataset), tb_writer, run_name,
+          weights=class_weights, binary=binary, use_wandb=use_wandb)
 
 
 if __name__ == "__main__":
