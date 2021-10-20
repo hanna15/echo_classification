@@ -87,7 +87,7 @@ parser.add_argument('--debug', action='store_true', help='set this flag when deb
 parser.add_argument('--visualise_frames', action='store_true', help='set this flag to visualise frames')
 parser.add_argument('--log_freq', type=int, default=2,
                     help='How often to log to tensorboard and w&B.')
-parser.add_argument('--tb_dir', type=str, default='tb_runs',
+parser.add_argument('--tb_dir', type=str, default='tb_runs_cv',
                     help='Tensorboard directory - where tensorboard logs are stored.')
 
 
