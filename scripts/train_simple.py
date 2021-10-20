@@ -329,7 +329,8 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
                     if log_dict["f1/valid"] < best_early_stop:
                         best_early_stop = log_dict["f1/valid"]
                         num_val_fails = 0
-                        save_model_and_res(model, run_name, target_lst, pred_lst, targ_lst_valid, pred_lst_valid, epoch, k)
+                        save_model_and_res(model, run_name, target_lst, pred_lst, targ_lst_valid, pred_lst_valid, epoch,
+                                           args.k)
                     else:
                         num_val_fails += 1
 
