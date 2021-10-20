@@ -44,9 +44,9 @@ parser.add_argument('--run_id', type=str, default='',
                          'running on same settings multiple times). Id will be pre-pended to the run name derived '
                          'from arguments. Default is empty string, i.e. only identify run with arguments.')
 # Data parameters
-parser.add_argument('--scaling_factor', default=0.5, help='How much to scale (down) the videos, as a ratio of original '
+parser.add_argument('--scaling_factor', default=0.25, help='How much to scale (down) the videos, as a ratio of original '
                                                           'size. Also determines the cache sub-folder')
-parser.add_argument('--num_workers', type=int, default=3, help='The number of workers for loading data')
+parser.add_argument('--num_workers', type=int, default=4, help='The number of workers for loading data')
 parser.add_argument('--augment', action='store_true',
                     help='set this flag to apply augmentation transformations to training data')
 parser.add_argument('--hist_eq', action='store_true',
@@ -61,7 +61,7 @@ parser.add_argument('--load_model', action='store_true',
                     help='Set this flag to load an already trained model to predict only, instead of training it.'
                          'If args.model_name is set, load model from that path. Otherwise, get model name acc. to'
                          'function get_run_name(), and load the corresponding model')
-parser.add_argument('--batch_size', type=int, default=1, help='Batch size for training')
+parser.add_argument('--batch_size', type=int, default=128, help='Batch size for training')
 parser.add_argument('--max_epochs', type=int, default=200, help='Max number of epochs to train')
 parser.add_argument('--lr', type=float, default=0.001, help='Learning rate')
 parser.add_argument('--decay_factor', type=float, default=0.0, help='Decay lr by this factor for decay on plateau')
@@ -222,21 +222,14 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=args.decay_factor, patience=args.decay_patience,
                                                      min_lr=args.min_lr, cooldown=args.cooldown)
 
-    # valid_num_batches = math.ceil(valid_len / args.batch_size)
-    # num_batches = math.ceil(data_len / args.batch_size)
     print("Start training on", data_len, "training samples, and", valid_len, "validation samples")
     for epoch in range(args.max_epochs):
         epoch_loss = 0
         epoch_valid_loss = 0
-        # epoch_corrs = 0
-        # epoch_valid_corrs = 0
         epoch_targets = []
         epoch_preds = []
         epoch_valid_targets = []
         epoch_valid_preds = []
-
-        # epoch_metrics = {'f1/train': 0, 'accuracy/train': 0, 'b-accuracy/train': 0}  #, 'roc_auc': 0}
-        # epoch_valid_metrics = {'f1/val': 0, 'accuracy/val': 0, 'b-accuracy/val': 0}  #, 'roc_auc': 0}
 
         # TRAIN
         model.train()
@@ -245,9 +238,6 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
             epoch_targets.extend(targets)
             epoch_preds.extend(torch.max(out, dim=1)[1])
             epoch_loss += loss.item() * args.batch_size
-            # epoch_corrs += torch.sum(pred == targets)
-            # for metric in metrics:
-            #     epoch_metrics[metric] += metrics[metric]
             optimizer.zero_grad()
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), max_norm=1)
@@ -261,9 +251,6 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
                 epoch_valid_targets.extend(val_targets)
                 epoch_valid_preds.extend(torch.max(val_out, dim=1)[1])
                 epoch_valid_loss += val_loss.item() * args.batch_size
-                # epoch_valid_corrs += torch.sum(val_pred == val_targets)
-                # for metric in val_metrics:
-                #     epoch_valid_metrics[metric] += val_metrics[metric]
 
         scheduler.step(epoch_valid_loss / valid_len)  # Update learning rate scheduler
 
@@ -277,14 +264,10 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
             print('*** epoch:', epoch, '***')
             print('train_loss:', epoch_loss / data_len)
             print('valid loss:', epoch_valid_loss / valid_len)
-            # print('overall accuracy:', epoch_corrs / data_len)
-            # print('overall valid accuracy:', epoch_valid_corrs / valid_len)
 
             for metric in epoch_metrics:
-                # epoch_metrics[metric] /= num_batches
                 print(metric, ":", epoch_metrics[metric])
             for metric in epoch_valid_metrics:
-                # epoch_valid_metrics[metric] /= valid_num_batches
                 print(metric, ":", epoch_valid_metrics[metric])
 
             # Todo: Create a metric dictionary that can be updated with more metrics.
@@ -316,7 +299,7 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
 
 
 def get_resnet(num_classes=3):
-    model = models.resnet18(pretrained=args.pretrained)  # TODO: Later move  to resnet-50 ==> better to start small.
+    model = models.resnet18(pretrained=args.pretrained)  # TODO: Later move to resnet-50 ==> better to start small.
     in_channels = 1
     # Change the input layer to take Grayscale image, instead of RGB images (set in_channels as 1)
     # original definition of the first layer on the ResNet class
