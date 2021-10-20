@@ -17,7 +17,7 @@ for val in ${StringArray[@]}; do
   echo "starting training on only specific augment: ${val}"
   bsub -R "rusage[mem=4096, ngpus_excl_p=1]" -W 04:00 -n 6 "python scripts/train_simple.py --cache_dir ~/.heart_echo --label_type 2class_drop_ambiguous --k $1 --${val}"
 done
-exit 0
+
 bsub -R "rusage[mem=4096, ngpus_excl_p=1]" -W 04:00 -n 6 \
 	"python scripts/train_simple.py --cache_dir ~/.heart_echo --label_type 2class_drop_ambiguous --k $1 --noise --intensity --rand_resize --rotate --translate"
 
