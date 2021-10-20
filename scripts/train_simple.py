@@ -134,17 +134,15 @@ def get_metrics(outputs, targets, prefix='', binary=False):
         avg = 'binary'
     else:
         avg = 'micro'  # For imbalanced multi-class, micro is better than macro
-    metrics = {  # zero_div=0, sets f1 to 1 (corr), when all targets and preds are negative & NOT give warning.
-                 # default is 'warn', which sets f1 to 0, and further raises a warning
-                'f1' + '/' + prefix: f1_score(targets, preds, average=avg),
-                'accuracy' + '/' + prefix: accuracy_score(targets, preds),
-                'b-accuracy' + '/' + prefix: balanced_accuracy_score(targets, preds),
-                'roc_auc' + '/' + prefix: roc_auc_score(targets, preds)
+    metrics = {'f1' + '/' + prefix: f1_score(targets, preds, average=avg),
+               'accuracy' + '/' + prefix: accuracy_score(targets, preds),
+               'b-accuracy' + '/' + prefix: balanced_accuracy_score(targets, preds),
+               'roc_auc' + '/' + prefix: roc_auc_score(targets, preds)
                }
     return metrics
 
 
-def run_batch(batch, model, criterion=None, binary=False, metric_prefix=''):
+def run_batch(batch, model, criterion=None, binary=False):
     """
     Run a single batch
     :param batch: The data for this batch
@@ -168,9 +166,6 @@ def run_batch(batch, model, criterion=None, binary=False, metric_prefix=''):
             loss = criterion(outputs, targets)
     else:  # when just evaluating, no loss
         loss = None
-    # return original targets (not one-hot)
-    # metrics, predictions = get_metrics(outputs, targets, metric_prefix, binary)
-    # return loss, predictions, targets, metrics # Don't calculate metrics on per-epoch basis
     return loss, outputs, targets
 
 
