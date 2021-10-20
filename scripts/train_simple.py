@@ -90,6 +90,7 @@ parser.add_argument('--log_freq', type=int, default=2,
 parser.add_argument('--tb_dir', type=str, default='tb_runs_cv',
                     help='Tensorboard directory - where tensorboard logs are stored.')
 
+MAX_NO_FOLDS = 5
 
 def get_run_name():
     """
@@ -225,16 +226,22 @@ def evaluate(model, model_name, train_loader, valid_loader, data_len, valid_len,
         print(metric, ":", epoch_valid_metrics[metric])
 
 
-def save_model_and_res(model, run_name, target_lst, pred_lst, val_target_lst, val_pred_lst, epoch=None):
+def save_model_and_res(model, run_name, target_lst, pred_lst, val_target_lst, val_pred_lst, epoch=None, k=None):
     if epoch is None:
         base_name = run_name + '_final'
     else:
         base_name = run_name + '_e' + str(epoch)
+    if k:
+        res_dir = os.path.join('results', 'fold' + k, base_name)
+        model_dir = os.path.join('models', 'fold' + k)
+    else:
+        res_dir = os.path.join('results', base_name)
+        model_dir = 'models'
     model_name = base_name + '.pt'
     targ_name = 'targets_' + base_name + '.npy'
     pred_name = 'preds_' + base_name + '.npy'
-    res_dir = 'results'
-    torch.save(model.state_dict(), os.path.join('models', model_name))
+
+    torch.save(model.state_dict(), os.path.join(model_dir, model_name))
     np.save(os.path.join(res_dir, 'train_' + targ_name), target_lst)
     np.save(os.path.join(res_dir, 'train_' + pred_name), pred_lst)
     np.save(os.path.join(res_dir, 'val_' + targ_name), val_target_lst)
@@ -322,8 +329,7 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
                     if log_dict["f1/valid"] < best_early_stop:
                         best_early_stop = log_dict["f1/valid"]
                         num_val_fails = 0
-                        if epoch != 0:
-                            save_model_and_res(model, run_name, target_lst, pred_lst, targ_lst_valid, pred_lst_valid, epoch)
+                        save_model_and_res(model, run_name, target_lst, pred_lst, targ_lst_valid, pred_lst_valid, epoch, k)
                     else:
                         num_val_fails += 1
 
@@ -407,6 +413,10 @@ def main():
     # Model
     model = get_resnet(num_classes=len(train_dataset.labels)).to(device)
     os.makedirs('models', exist_ok=True)  # create model results dir, if not exists
+    os.makedirs('results', exist_ok=True)  # create results dir, if not exists
+    for i in range(MAX_NO_FOLDS):
+        os.makedirs(os.path.join('models', 'fold' + str(i)), exist_ok=True)  # create model results dir, if not exists
+        os.makedirs(os.path.join('results', 'fold' + str(i)), exist_ok=True)  # create results dir, if not exists
     os.makedirs('results', exist_ok=True)  # create results dir, if not exists
 
     if args.load_model:  # Create eval datasets (no shuffle) and evaluate model
