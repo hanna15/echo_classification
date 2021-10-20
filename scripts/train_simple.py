@@ -91,7 +91,11 @@ def get_run_name():
         run_id = ''
     else:
         run_id = args.run_id + '_'
-    run_name = run_id + 'lt_' + args.label_type + '.lr_' + str(args.lr) + '.batch_' + str(args.batch_size)
+    if args.k is None:
+        k = ''
+    else:
+        k = '.k_' + str(args.k)
+    run_name = run_id + 'lt_' + args.label_type + k + '.lr_' + str(args.lr) + '.batch_' + str(args.batch_size)
     if args.decay_factor > 0.0:
         run_name += str(args.decay_factor)  # only add to description if not default
     if args.decay_patience < 1000:

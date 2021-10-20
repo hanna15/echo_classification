@@ -199,7 +199,7 @@ class RandomSharpness():
 
 class RandomNoise():
     """
-    Add Gaussian noise to the image. Must be called befor normalization
+    Add Gaussian noise to the image. Must be called before normalization
     """
 
     def __init__(self):
@@ -275,11 +275,13 @@ def get_augment_transforms(hist_eq=True):
     rand_resize = transforms.RandomApply([RandomResize()])  # 50 % of image get resizing (either pad or zoom)
     rand_rotate = transforms.RandomApply([Rotate()])  # 50 % of images will be rotated
     rand_translate = transforms.RandomApply([Translate()])  # 50 % of images will be translated
+    rand_noise = transforms.RandomApply([RandomNoise()])
     if hist_eq:
         overall_augments = [HistEq(),
                             transforms.ToPILImage(),
                             transforms.Resize(size=(128, 128), interpolation=i_mode.BICUBIC),
                             transforms.ToTensor(),
+                            rand_noise,
                             rand_intensity_aug,
                             rand_resize,
                             rand_rotate,
