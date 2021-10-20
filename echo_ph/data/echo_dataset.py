@@ -115,11 +115,10 @@ class EchoDataset(Dataset):
         label = self.targets[idx]
         frame = self.transform(frame)
         if self.visualise_frames:
-            plt.imshow(frame.squeeze(0), cmap='gray')
+            plt.imshow(frame.squeeze(0), cmap='gray', title='before trans')
             plt.show()
         sample = {'label': label, 'frames': frame}
-        import random
-        # if random.random() < 0.12:
-        #     plt.imshow(frame.squeeze(0), cmap='Greys_r')
-        #     plt.show()
+        if self.visualise_frames:
+            plt.imshow(frame.squeeze(0), cmap='Greys_r', title='after trans')
+            plt.show()
         return sample
