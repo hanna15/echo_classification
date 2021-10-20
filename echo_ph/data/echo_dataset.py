@@ -81,7 +81,7 @@ class EchoDataset(Dataset):
         if self.cache_dir is None:  # Use raw videos, as no cached processed videos provided
             curr_video_path = os.path.join(self.videos_dir, str(sample) + 'KAPAP.mp4')  # TODO: Generalise
         else:  # Use cached videos
-            curr_video_path = os.path.join(self.cache_dir, str(sample) + 'KAPAP.npy') # TODO: Generalise
+            curr_video_path = os.path.join(self.cache_dir, str(sample) + 'KAPAP.npy')  # TODO: Generalise
         if not os.path.exists(curr_video_path):
             print(f'Skipping sample {sample}, as the video path {curr_video_path} does not exist')
             return None, None
@@ -118,4 +118,8 @@ class EchoDataset(Dataset):
             plt.imshow(frame.squeeze(0), cmap='gray')
             plt.show()
         sample = {'label': label, 'frames': frame}
+        import random
+        # if random.random() < 0.12:
+        #     plt.imshow(frame.squeeze(0), cmap='Greys_r')
+        #     plt.show()
         return sample
