@@ -7,11 +7,11 @@ from torch import nn, optim, no_grad
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from torch.utils.tensorboard import SummaryWriter
 from torchvision import models, transforms
-from torchvision.transforms import InterpolationMode
+from torchvision.transforms import InterpolationMode as i_mode
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 import wandb
 from echo_ph.data.echo_dataset import EchoDataset
-from utils.transforms import Normalize, RandomResize, AugmentSimpleIntensityOnly
+from utils.transforms import Normalize, get_augment_transforms, get_base_transforms
 from sklearn.metrics import f1_score, accuracy_score, balanced_accuracy_score, roc_auc_score
 import warnings
 
@@ -22,23 +22,45 @@ newborn echocardiography video (KAPAP view).
 
 parser = ArgumentParser(
     description='Train a Machine Learning model for classifying newborn echocardiography. Please make sure to have '
-                'already generated label files, placed in project_root/label_files, and test/train index files, placed'
+                'already generated label files, placed in project_root/label_files, and valid/train index files, placed'
                 'in project_root/index_files',
     formatter_class=ArgumentDefaultsHelpFormatter)
-# Paths
+# Paths, file name, model names, etc
 parser.add_argument('--videos_dir', default=None,
                     help='Path to the directory containing the raw videos - if work on raw videos')
 parser.add_argument('--cache_dir', default=None,
                     help='Path to the directory containing the cached and processed numpy videos - if work on those')
 parser.add_argument('--label_type', default='2class', choices=['2class', '2class_drop_ambiguous', '3class'],
                     help='How many classes for the labels, and in some cases also variations of dropping ambiguous '
-                         'labels. Will be used to fetch the correct label file and train and test index files')
+                         'labels. Will be used to fetch the correct label file and train and valid index files')
+parser.add_argument('--k', default=None, type=int,
+                    help='In case of k-fold cross-validation, set the current k (fold) for this training.'
+                         'Will be used to fetch the relevant k-th train and valid index file')
+parser.add_argument('--model_name', type=str, default=None,
+                    help='Set the name of the model you want to load or train. If None, use the model name as assigned'
+                         'by the function get_run_name(), using selected arguments, and optionally unique_run_id')
+parser.add_argument('--run_id', type=str, default='',
+                    help='Set a unique_run_id, to identify run if arguments alone are not enough to identify (e.g. when'
+                         'running on same settings multiple times). Id will be pre-pended to the run name derived '
+                         'from arguments. Default is empty string, i.e. only identify run with arguments.')
 # Data parameters
 parser.add_argument('--scaling_factor', default=0.5, help='How much to scale (down) the videos, as a ratio of original '
                                                           'size. Also determines the cache sub-folder')
 parser.add_argument('--num_workers', type=int, default=3, help='The number of workers for loading data')
-
+parser.add_argument('--augment', action='store_true',
+                    help='set this flag to apply augmentation transformations to training data')
+parser.add_argument('--hist_eq', action='store_true',
+                    help='set this flag to apply histogram equalisation to training and validation data')
+# Class imbalance
+parser.add_argument('--class_balance_per_epoch', action='store_true',
+                    help='set this flag to have ca. equal no. samples of each class per epoch / oversampling')
+parser.add_argument('--weight_loss', action='store_true',
+                    help='set this flag to weight loss, according to class imbalance')
 # Training parameters
+parser.add_argument('--load_model', action='store_true',
+                    help='Set this flag to load an already trained model to predict only, instead of training it.'
+                         'If args.model_name is set, load model from that path. Otherwise, get model name acc. to'
+                         'function get_run_name(), and load the corresponding model')
 parser.add_argument('--batch_size', type=int, default=1, help='Batch size for training')
 parser.add_argument('--max_epochs', type=int, default=200, help='Max number of epochs to train')
 parser.add_argument('--lr', type=float, default=0.001, help='Learning rate')
@@ -49,13 +71,6 @@ parser.add_argument('--min_lr', type=float, default=0.0, help='Min learning rate
 parser.add_argument('--cooldown', type=float, default=0, help='cool-down for reducing lr on plateau')
 parser.add_argument('--pretrained', action='store_true', help='Set this flag to use pre-trained resnet')
 
-# Class imbalance
-parser.add_argument('--class_balance_per_epoch', action='store_true',
-                    help='set this flag to have ca. equal no. samples of each class per epoch / oversampling')
-parser.add_argument('--weight_loss', action='store_true',
-                    help='set this flag to weight loss, according to class imbalance')
-parser.add_argument('--augment', action='store_true',
-                    help='set this flag to apply augmentation transformations to training data')
 # General parameters
 parser.add_argument('--debug', action='store_true', help='set this flag when debugging, to not connect to wandb, etc')
 parser.add_argument('--visualise_frames', action='store_true', help='set this flag to visualise frames')
@@ -72,8 +87,15 @@ def get_run_name():
     Can be used for model name and tb log names
     :return:
     """
-    run_name = 'lt_' + args.label_type + '.lr_' + str(args.lr) + '.batch_' + str(args.batch_size) + \
-               '.df_' + str(args.decay_factor) + 'dp_' + str(args.decay_patience)
+    if args.run_id == '':
+        run_id = ''
+    else:
+        run_id = args.run_id + '_'
+    run_name = run_id + 'lt_' + args.label_type + '.lr_' + str(args.lr) + '.batch_' + str(args.batch_size)
+    if args.decay_factor > 0.0:
+        run_name += str(args.decay_factor)  # only add to description if not default
+    if args.decay_patience < 1000:
+        run_name += str(args.decay_patience)  # only add to description if not default
     if args.pretrained:
         run_name += '_pre'
     if args.augment:
@@ -82,38 +104,43 @@ def get_run_name():
         run_name += '_bal'
     if args.weight_loss:
         run_name += '_weight'
+    if args.hist_eq:
+        run_name += '_hist'
     return run_name
 
 
 def get_metrics(outputs, targets, prefix='', binary=False):
     """
     Get metrics per batch
-    :param outputs: Model outputs (before max)
-    :param targets: Targets / true labels
+    :param outputs: Model outputs (before max) OR model predictions (after max) - as a tensor OR list
+    :param targets: Targets / true label - as a tensor OR list
     :param prefix: What to prefix the metric with - set to 'train' or 'valid' or 'test'
     :param binary: Set to true if this is for binary classification
     :return: Dictionary containing the metrics and the model predictions (arg maxed outputs)
     """
-    out = outputs.cpu()
-    tar = targets.cpu()
-    _, preds = torch.max(out, dim=1)
+    if torch.is_tensor(outputs):
+        outputs = outputs.cpu()
+        targets = targets.cpu()
+    if np.shape(outputs) != np.shape(targets):
+        preds = np.max(outputs, dim=1)
+    else:
+        preds = outputs
+
     if binary:
         avg = 'binary'
     else:
         avg = 'micro'  # For imbalanced multi-class, micro is better than macro
     metrics = {  # zero_div=0, sets f1 to 1 (corr), when all targets and preds are negative & NOT give warning.
                  # default is 'warn', which sets f1 to 0, and further raises a warning
-                'f1' + '/' + prefix: f1_score(tar, preds, average=avg, zero_division=1),
-                'accuracy' + '/' + prefix: accuracy_score(tar, preds),
-                'b-accuracy' + '/' + prefix: balanced_accuracy_score(tar, preds)  # ,
-                # prefix + 'roc_auc': roc_auc_score(tar, preds)
-                # Todo: roc_auc is undefined if batch gt has only 1 class
-                # TODO: => thus change all metrics to be calculated per-EPOCH (!), instead of per-batch
+                'f1' + '/' + prefix: f1_score(targets, preds, average=avg),
+                'accuracy' + '/' + prefix: accuracy_score(targets, preds),
+                'b-accuracy' + '/' + prefix: balanced_accuracy_score(targets, preds),
+                'roc_auc' + '/' + prefix: roc_auc_score(targets, preds)
                }
-    return metrics, preds
+    return metrics
 
 
-def run_batch(batch, model, criterion, binary=False, metric_prefix=''):
+def run_batch(batch, model, criterion=None, binary=False, metric_prefix=''):
     """
     Run a single batch
     :param batch: The data for this batch
@@ -127,15 +154,56 @@ def run_batch(batch, model, criterion, binary=False, metric_prefix=''):
     input = batch["frames"].to(dev)  # batch_size, num_channels, w, h
     targets = batch["label"].to(dev)
     outputs = model(input)
-    if binary:
-        # Convert to one-hot encoding, and convert to float, bc the binary loss supports prob. labels (“soft” labels).
-        one_hot_targets = torch.nn.functional.one_hot(targets, num_classes=2).float()
-        loss = criterion(outputs, one_hot_targets)
-    else:
-        loss = criterion(outputs, targets)
+    # Get loss, if we are training
+    if criterion:
+        if binary:
+            # Convert to one-hot encoding, and convert to float, bc the binary loss supports prob. labels (“soft” labels).
+            one_hot_targets = torch.nn.functional.one_hot(targets, num_classes=2).float()
+            loss = criterion(outputs, one_hot_targets)
+        else:
+            loss = criterion(outputs, targets)
+    else:  # when just evaluating, no loss
+        loss = None
     # return original targets (not one-hot)
-    metrics, predictions = get_metrics(outputs, targets, metric_prefix, binary)
-    return loss, predictions, targets, metrics
+    # metrics, predictions = get_metrics(outputs, targets, metric_prefix, binary)
+    # return loss, predictions, targets, metrics # Don't calculate metrics on per-epoch basis
+    return loss, outputs, targets
+
+
+def evaluate(model, model_name, train_loader, valid_loader, data_len, valid_len, binary=False):
+    model_path = os.path.join('models', model_name)
+    model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
+
+    valid_num_batches = math.ceil(valid_len / args.batch_size)
+    num_batches = math.ceil(data_len / args.batch_size)
+    epoch_metrics = {'f1/train': 0, 'accuracy/train': 0, 'b-accuracy/train': 0}  # , 'roc_auc': 0}
+    epoch_valid_metrics = {'f1/val': 0, 'accuracy/val': 0, 'b-accuracy/val': 0}  # , 'roc_auc': 0
+    epoch_targets = []
+    epoch_preds = []
+    epoch_valid_targets = []
+    epoch_valid_preds = []
+
+    with torch.no_grad():
+        model.eval()
+        for train_batch in train_loader:
+            _, pred, targets, metrics = run_batch(train_batch, model, binary=binary, metric_prefix='train')
+            epoch_targets.extend(targets)
+            epoch_preds.extend(pred)
+            for metric in metrics:
+                epoch_metrics[metric] += metrics[metric]
+        for valid_batch in valid_loader:
+            _, val_pred, val_targets, val_metrics = run_batch(valid_batch, model, binary=binary, metric_prefix='valid')
+            epoch_valid_targets.extend(val_targets)
+            epoch_valid_preds.extend(val_pred)
+            for metric in val_metrics:
+                epoch_valid_metrics[metric] += val_metrics[metric]
+
+    for metric in epoch_metrics:
+        epoch_metrics[metric] /= num_batches
+        print(metric, ":", epoch_metrics[metric])
+    for metric in epoch_valid_metrics:
+        epoch_valid_metrics[metric] /= valid_num_batches
+        print(metric, ":", epoch_valid_metrics[metric])
 
 
 def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run_name, weights=None, binary=False,
@@ -150,29 +218,32 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=args.decay_factor, patience=args.decay_patience,
                                                      min_lr=args.min_lr, cooldown=args.cooldown)
 
-    valid_num_batches = math.ceil(valid_len / args.batch_size)
-    num_batches = math.ceil(data_len / args.batch_size)
+    # valid_num_batches = math.ceil(valid_len / args.batch_size)
+    # num_batches = math.ceil(data_len / args.batch_size)
     print("Start training on", data_len, "training samples, and", valid_len, "validation samples")
     for epoch in range(args.max_epochs):
         epoch_loss = 0
         epoch_valid_loss = 0
+        # epoch_corrs = 0
+        # epoch_valid_corrs = 0
         epoch_targets = []
         epoch_preds = []
         epoch_valid_targets = []
         epoch_valid_preds = []
 
-        epoch_metrics = {'f1/train': 0, 'accuracy/train': 0, 'b-accuracy/train': 0}  #, 'roc_auc': 0}
-        epoch_valid_metrics = {'f1/val': 0, 'accuracy/val': 0, 'b-accuracy/val': 0}  #, 'roc_auc': 0}
+        # epoch_metrics = {'f1/train': 0, 'accuracy/train': 0, 'b-accuracy/train': 0}  #, 'roc_auc': 0}
+        # epoch_valid_metrics = {'f1/val': 0, 'accuracy/val': 0, 'b-accuracy/val': 0}  #, 'roc_auc': 0}
 
         # TRAIN
         model.train()
         for train_batch in train_loader:
-            loss, pred, targets, metrics = run_batch(train_batch, model, criterion, binary=binary, metric_prefix='train')
+            loss, out, targets = run_batch(train_batch, model, criterion, binary=binary)
             epoch_targets.extend(targets)
-            epoch_preds.extend(pred)
+            epoch_preds.extend(torch.max(out, dim=1)[1])
             epoch_loss += loss.item() * args.batch_size
-            for metric in metrics:
-                epoch_metrics[metric] += metrics[metric]
+            # epoch_corrs += torch.sum(pred == targets)
+            # for metric in metrics:
+            #     epoch_metrics[metric] += metrics[metric]
             optimizer.zero_grad()
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), max_norm=1)
@@ -182,26 +253,34 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
         with no_grad():
             model.eval()
             for valid_batch in valid_loader:
-                val_loss, val_pred, val_targets, val_metrics = run_batch(valid_batch, model, criterion, binary=binary,
-                                                                         metric_prefix='val')
+                val_loss, val_out, val_targets = run_batch(valid_batch, model, criterion, binary=binary)
                 epoch_valid_targets.extend(val_targets)
-                epoch_valid_preds.extend(val_pred)
+                epoch_valid_preds.extend(torch.max(val_out, dim=1)[1])
                 epoch_valid_loss += val_loss.item() * args.batch_size
-                for metric in val_metrics:
-                    epoch_valid_metrics[metric] += val_metrics[metric]
+                # epoch_valid_corrs += torch.sum(val_pred == val_targets)
+                # for metric in val_metrics:
+                #     epoch_valid_metrics[metric] += val_metrics[metric]
 
         scheduler.step(epoch_valid_loss / valid_len)  # Update learning rate scheduler
 
-        if epoch % args.log_freq == 0:  # log every 10th epoch
+        if epoch % args.log_freq == 0:  # log every xth epoch
+            target_lst = [t.item() for t in epoch_targets]
+            pred_lst = [t.item() for t in epoch_preds]
+            targ_lst_valid = [t.item() for t in epoch_valid_targets]
+            pred_lst_valid = [t.item() for t in epoch_valid_preds]
+            epoch_metrics = get_metrics(pred_lst, target_lst, prefix='train', binary=binary)
+            epoch_valid_metrics = get_metrics(pred_lst_valid, targ_lst_valid, prefix='valid', binary=binary)
             print('*** epoch:', epoch, '***')
             print('train_loss:', epoch_loss / data_len)
             print('valid loss:', epoch_valid_loss / valid_len)
+            # print('overall accuracy:', epoch_corrs / data_len)
+            # print('overall valid accuracy:', epoch_valid_corrs / valid_len)
 
             for metric in epoch_metrics:
-                epoch_metrics[metric] /= num_batches
+                # epoch_metrics[metric] /= num_batches
                 print(metric, ":", epoch_metrics[metric])
             for metric in epoch_valid_metrics:
-                epoch_valid_metrics[metric] /= valid_num_batches
+                # epoch_valid_metrics[metric] /= valid_num_batches
                 print(metric, ":", epoch_valid_metrics[metric])
 
             # Todo: Create a metric dictionary that can be updated with more metrics.
@@ -222,8 +301,6 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
 
                 if epoch % (2 * args.log_freq) == 0:  # save model checkpoints at 2x lower resolution than saving logs
                     torch.save(model.state_dict(), os.path.join('models', run_name + '.pt'))
-
-
             else:
                 target_lst = [t.item() for t in epoch_targets]
                 vals, cnts = np.unique(target_lst, return_counts=True)
@@ -265,50 +342,52 @@ def main():
     print('Will be training on device', device)
     binary = True if args.label_type.startswith('2class') else False
     label_path = os.path.join('label_files', 'labels_' + args.label_type + '.pkl')
-    train_index_file_path = os.path.join('index_files', 'train_samples_' + args.label_type + '.npy')
-    test_index_file_path = os.path.join('index_files', 'test_samples_' + args.label_type + '.npy')
+    idx_file_end = '' if args.k is None else '_' + str(args.k)
+    train_index_file_path = os.path.join('index_files', 'train_samples_' + args.label_type + idx_file_end + '.npy')
+    valid_index_file_path = os.path.join('index_files', 'valid_samples_' + args.label_type + idx_file_end + '.npy')
 
     # Data & Transforms (TODO: Later have a separate transforms class)
-    base_transforms = [transforms.ToPILImage(), transforms.Resize(size=(128, 128),
-                                                                  interpolation=InterpolationMode.BICUBIC),
-                       transforms.ToTensor(), Normalize()]
-    transform_list_train = base_transforms
-    if args.augment:
-        # In 65% cases, apply intensity augment. These have 3 transformations, each applied with 50% prob - so in 87.5%
-        # of calling it, some augmentation is performed. Thus, total% of intensity augments is: 0.875 * 0.65 = 56.8 %
-        intesity_aug = transforms.RandomApply([AugmentSimpleIntensityOnly()], 0.65)
-        # In 50% cases perform random resizing (each time image is EITHER padded and made smaller or zoomed in)
-        resize = transforms.RandomApply([RandomResize()], 0.5)
-        transform_list_train.extend([intesity_aug, resize])
-    transforms_train = transforms.Compose(transform_list_train)
-    transforms_valid = transforms.Compose(base_transforms)
+    if args.augment and not args.load_model:  # Only add augmentation if we are training
+        train_transforms = get_augment_transforms(hist_eq=args.hist_eq)
+    else:
+        train_transforms = get_base_transforms(hist_eq=args.hist_eq)
+    valid_transforms = get_base_transforms(hist_eq=args.hist_eq)
 
-    train_dataset = EchoDataset(train_index_file_path, label_path, videos_dir=args.videos_dir, cache_dir=args.cache_dir,
-                                transform=transforms_train, scaling_factor=args.scaling_factor, procs=args.num_workers,
+    train_dataset = EchoDataset(train_index_file_path, label_path, videos_dir=args.videos_dir,
+                                cache_dir=args.cache_dir,
+                                transform=train_transforms, scaling_factor=args.scaling_factor,
+                                procs=args.num_workers,
                                 visualise_frames=args.visualise_frames)
     if args.weight_loss:
         class_weights = torch.tensor(train_dataset.class_weights, dtype=torch.float).to(device)
     else:
         class_weights = None
-    valid_dataset = EchoDataset(test_index_file_path, label_path, videos_dir=args.videos_dir, cache_dir=args.cache_dir,
-                                transform=transforms_valid, scaling_factor=args.scaling_factor, procs=args.num_workers,
+    valid_dataset = EchoDataset(valid_index_file_path, label_path, videos_dir=args.videos_dir, cache_dir=args.cache_dir,
+                                transform=valid_transforms, scaling_factor=args.scaling_factor, procs=args.num_workers,
                                 visualise_frames=args.visualise_frames)
     # For the data loader, if only use 1 worker, set it to 0, so data is loaded on the main process
     num_workers = (0 if args.num_workers == 1 else args.num_workers)
 
-    if args.class_balance_per_epoch:
-        sampler = WeightedRandomSampler(train_dataset.example_weights, train_dataset.num_samples)
-        train_loader = DataLoader(train_dataset, args.batch_size, shuffle=False, num_workers=num_workers,
-                                  sampler=sampler)  # Sampler is mutually exclusive with shuffle
-    else:
-        train_loader = DataLoader(train_dataset, args.batch_size, shuffle=True, num_workers=num_workers)
-    valid_loader = DataLoader(valid_dataset, args.batch_size, shuffle=False, num_workers=num_workers)
-
     # Model
     model = get_resnet(num_classes=len(train_dataset.labels)).to(device)
-    os.makedirs('models', exist_ok=True) # create model results dir, if not exists
-    train(model, train_loader, valid_loader, len(train_dataset), len(valid_dataset), tb_writer, run_name,
-          weights=class_weights, binary=binary, use_wandb=use_wandb)
+    os.makedirs('models', exist_ok=True)  # create model results dir, if not exists
+
+    if args.load_model:  # Create eval datasets (no shuffle) and evaluate model
+        eval_loader_train = DataLoader(train_dataset, args.batch_size, shuffle=False, num_workers=num_workers)
+        eval_loader_valid = DataLoader(valid_dataset, args.batch_size, shuffle=False, num_workers=num_workers)
+        model_name = run_name if args.model_name is None else args.model_name
+        evaluate(model, model_name, eval_loader_train, eval_loader_valid)
+    else:  # Create training datasets (with shuffling or sampler) and train
+        if args.class_balance_per_epoch:
+            sampler = WeightedRandomSampler(train_dataset.example_weights, train_dataset.num_samples)
+            train_loader = DataLoader(train_dataset, args.batch_size, shuffle=False, num_workers=num_workers,
+                                      sampler=sampler)  # Sampler is mutually exclusive with shuffle
+        else:
+            train_loader = DataLoader(train_dataset, args.batch_size, shuffle=True, num_workers=num_workers)
+        valid_loader = DataLoader(valid_dataset, args.batch_size, shuffle=False, num_workers=num_workers)
+
+        train(model, train_loader, valid_loader, len(train_dataset), len(valid_dataset), tb_writer, run_name,
+              weights=class_weights, binary=binary, use_wandb=use_wandb)
 
 
 if __name__ == "__main__":

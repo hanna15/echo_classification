@@ -1,275 +1,13 @@
 from torchvision import transforms
-from datetime import datetime
 import torch
 import cv2
-import os
-import sys
 import math
-from pathlib import Path
-from tqdm.auto import tqdm
 import random
-import numpy as np
-from matplotlib import pyplot as plt
-import utils.utilities as utilities
 import torchvision.transforms.functional as F
-
-# Imports for mask generation
-from scipy.spatial import ConvexHull
-from heart_echo.Helpers import LABELTYPE
-from utils.constants import TRAIN_PATIENT_IDS, VAL_PATIENT_IDS, TEST_PATIENT_IDS
-from heart_echo.pytorch import HeartEchoDataset
+from torchvision.transforms import InterpolationMode as i_mode
+import numpy as np
 
 FILL_VAL = 0.3  # ?? Where does this value come from (??)
-
-
-class Identity():
-    """
-    Identity transformation
-    """
-
-    def __call__(self, sample):
-        return sample
-
-
-class VideoSubsample():
-    """
-    Randomly sample specified number of frames from video
-    """
-
-    def __init__(self, num_frames):
-        self.num_frames = num_frames
-
-    def __call__(self, sample):
-        sample, p_id = sample
-        T = len(sample)
-        start = random.randint(0, T - 2 * self.num_frames + 1)
-        frames = []
-        for i in range(self.num_frames):
-            frames.append(sample[start + 2 * i].squeeze())
-        return frames, p_id
-
-
-class ConvertToTensor():
-    """
-    Convert numpy array to Tensor
-    """
-
-    def __call__(self, sample):
-        #sample, p_id = sample
-        if isinstance(sample, list):
-            # return torch.stack([torch.from_numpy(s).float().unsqueeze(0) for s in sample]), p_id
-            return torch.stack([torch.from_numpy(s).float().unsqueeze(0) for s in sample])
-        else:
-            # return torch.from_numpy(sample).float().unsqueeze(0), p_id
-            return torch.from_numpy(sample).float().unsqueeze(0)
-
-
-class ShapeEqualization():
-    """
-    Warp each echo into uniform shape
-    """
-
-    def _get_masks(self):
-        mask_path = os.path.expanduser(os.path.join('~', '.echo-net', 'masks'))
-        mask_fn = os.path.join(mask_path, f'{-1}_{int(100 * self.orig_img_scale)}_percent.pt')
-        if not os.path.exists(mask_fn):
-            utilities.generate_masks(-1, self.orig_img_scale)
-        return torch.load(mask_fn)
-
-    def _generate_arc_points(self, left, middle, right, n_parts=1000):
-        """
-        Take three points defining an arc and generate n_parts equispaced points on it
-        """
-        # Get circle defining the arc
-        radius, center = utilities.circle_from_points(left, middle, right)
-
-        # Shift points such that center is at origin
-        centered_left = left - center
-        centered_right = right - center
-
-        # Calculate angles of left and right point
-        angle_left = math.atan2(centered_left[1], centered_left[0])
-        angle_right = math.atan2(centered_right[1], centered_right[0])
-
-        # Generate angle for distance between arc points
-        part = (angle_right - angle_left) / n_parts
-
-        # Generate points on arc
-        points = []
-        for i in range(n_parts):
-            theta = i * part + angle_left
-            x = radius * math.cos(theta)
-            y = radius * math.sin(theta)
-            point = np.array([x, y]) + center
-            points.append(point)
-        return np.array(points)
-
-    def _generate_line_points(self, p1, p2, n_parts=400):
-        """
-        Generate n_parts equispaced points on line segment defined over p1 and p2
-        """
-        points = []
-        for i in range(n_parts):
-            point = p1 + (p2 - p1) * float(i) / n_parts
-            points.append(point)
-        return np.array(points)
-
-    def _generate_perspective_transforms(self, size):
-        # Get echo mask for each patient
-        mask_path = os.path.expanduser(os.path.join('~', '.echo-net', 'masks'))
-        mask_fn = os.path.join(mask_path, f'{-1}_{int(100 * self.orig_img_scale)}_percent.pt')
-        masks = self._get_masks()
-
-        fn = os.path.join(self.transform_path, f'{size}.pt')
-        # Get transformation for each patient
-        print("Assembling perspective transformation for shape equalization.")
-        transforms = {}
-        for patient in tqdm(TRAIN_PATIENT_IDS + VAL_PATIENT_IDS + TEST_PATIENT_IDS):
-            p_id = f'{patient}CV'
-
-            # Get high resolution mask
-            if not p_id in masks:
-                continue
-            mask = masks[p_id]
-
-            # Assemble initial point correspondences
-            pa = utilities.get_arc_points_from_mask(mask)
-            pb = np.array([[size // 32, size / 2], [6 * size / 8, size - size // 32], [size - size // 32, size / 2],
-                           [6 * size / 8, size // 32]], dtype=np.int32)
-
-            # Add point correspondences on arc
-            left, middle, right = pa[3], pa[2], pa[1]
-            pa = np.concatenate((pa, self._generate_arc_points(left, middle, right)))
-            left, middle, right = pb[3], pb[2], pb[1]
-            pb = np.concatenate((pb, self._generate_arc_points(left, middle, right)))
-
-            # Add point correspondences on line segments
-            p1, p2 = pa[0], pa[1]
-            pa = np.concatenate((pa, self._generate_line_points(p1, p2)))
-            p1, p2 = pa[0], pa[3]
-            pa = np.concatenate((pa, self._generate_line_points(p1, p2)))
-
-            p1, p2 = pb[0], pb[1]
-            pb = np.concatenate((pb, self._generate_line_points(p1, p2)))
-            p1, p2 = pb[0], pb[3]
-            pb = np.concatenate((pb, self._generate_line_points(p1, p2)))
-
-            # Compute homography and add to transformation dict
-            pa, pb = np.float32(pa), np.float32(pb)
-            homog, _ = cv2.findHomography(np.array([pa[:, 1], pa[:, 0]]).T, np.array([pb[:, 1], pb[:, 0]]).T,
-                                          cv2.RANSAC)
-            transforms[p_id] = homog
-
-        torch.save(transforms, fn)
-
-    def _get_perspective_transforms(self, size):
-        fn = os.path.join(self.transform_path, f'{size}.pt')
-        if not os.path.exists(fn):
-            self._generate_perspective_transforms(size)
-        return torch.load(fn)
-
-    def __init__(self, resize=256, orig_img_scale=0.5):
-        self.resize = resize
-        self.orig_img_scale = orig_img_scale
-        self.transform_path = os.path.expanduser(os.path.join('~', '.echo-net', 'shape_equalization'))
-        Path(self.transform_path).mkdir(parents=True, exist_ok=True)
-        self.perspective_transforms = self._get_perspective_transforms(resize)
-
-    def __call__(self, sample):
-        sample, p_id = sample
-        sample = sample.squeeze()
-        homog = self.perspective_transforms[p_id]
-        sample = cv2.warpPerspective(np.float32(sample), homog, (self.resize, self.resize))
-        sample = torch.from_numpy(sample).float().unsqueeze(0)
-        return sample
-
-
-class RandomMask():
-    """
-    Apply a random arc mask from any patient
-    """
-
-    def _get_masks(self, resize):
-        mask_fn = os.path.join(self.mask_path, f'{resize}_{int(100 * self.orig_img_scale)}_percent.pt')
-        if not os.path.exists(mask_fn):
-            utilities.generate_masks(resize, self.orig_img_scale)
-        return torch.load(mask_fn)
-
-    def __init__(self, resize=256, orig_img_scale=0.5):
-        self.orig_img_scale = orig_img_scale
-        self.mask_path = os.path.expanduser(os.path.join('~', '.echo-net', 'masks'))
-        Path(self.mask_path).mkdir(parents=True, exist_ok=True)
-        self.masks = self._get_masks(resize)
-
-    def __call__(self, sample):
-        mask_keys = list(self.masks.keys())
-        random_mask_idx = random.randint(0, len(mask_keys) - 1)
-        random_mask = self.masks[mask_keys[random_mask_idx]]
-        return sample * random_mask
-
-
-class MinMask():
-    """
-    Apply the minimum pixel arc mask to sample
-    """
-
-    def _get_masks(self, resize):
-        mask_fn = os.path.join(self.mask_path, f'{resize}_{int(100 * self.orig_img_scale)}_percent.pt')
-        if not os.path.exists(mask_fn):
-            utilities.generate_masks(resize, self.orig_img_scale)
-        return torch.load(mask_fn)
-
-    def _find_min_mask(self):
-        n_nonzero = torch.Tensor([torch.nonzero(mask).shape[0] for mask in self.masks.values()])
-        min_idx = n_nonzero.argmin()
-        self.min_mask = list(self.masks.values())[min_idx]
-
-    def __init__(self, resize=256, orig_img_scale=0.5):
-        self.orig_img_scale = orig_img_scale
-        self.mask_path = os.path.expanduser(os.path.join('~', '.echo-net', 'masks'))
-        Path(self.mask_path).mkdir(parents=True, exist_ok=True)
-        self.masks = self._get_masks(resize)
-        self._find_min_mask()
-
-    def __call__(self, sample):
-        return sample * self.min_mask
-
-
-class CropToCorners():
-    """
-    Crop echo to have the its four corners at the border
-    """
-
-    def _get_masks(self):
-        mask_fn = os.path.join(self.mask_path, f'{-1}_{int(100 * self.orig_img_scale)}_percent.pt')
-        if not os.path.exists(mask_fn):
-            utilities.generate_masks(-1, self.orig_img_scale)
-        return torch.load(mask_fn)
-
-    def _get_mask_corners(self):
-        corners_fn = os.path.join(self.corner_path, f'{int(100 * self.orig_img_scale)}_percent.pt')
-        if not os.path.exists(corners_fn):
-            utilities.generate_mask_corners(self.orig_img_scale)
-        return torch.load(corners_fn)
-
-    def __init__(self, orig_img_scale=0.5):
-        self.orig_img_scale = orig_img_scale
-
-        # Generate precomputation libraries for masks and corners
-        self.mask_path = os.path.expanduser(os.path.join('~', '.echo-net', 'masks'))
-        self.corner_path = os.path.expanduser(os.path.join('~', '.echo-net', 'mask_corners'))
-        Path(self.mask_path).mkdir(parents=True, exist_ok=True)
-        Path(self.corner_path).mkdir(parents=True, exist_ok=True)
-
-        # Get masks and corners
-        self.masks = self._get_masks()
-        self.corners = self._get_mask_corners()
-
-    def __call__(self, sample):
-        sample, p_id = sample
-        T, R, B, L = self.corners[p_id]
-        sample = sample[:, T[0]:B[0], L[1]:R[1]]
-        return (sample, p_id)
 
 
 class HistEq():
@@ -278,12 +16,7 @@ class HistEq():
     """
 
     def __call__(self, sample):
-        #sample, p_id = sample
-        if isinstance(sample, list):
-            sample = [cv2.equalizeHist(s) for s in sample]
-        else:
-            sample = cv2.equalizeHist(sample)
-        #return (sample, p_id)
+        sample = cv2.equalizeHist(sample)
         return sample
 
 
@@ -339,121 +72,21 @@ class RandResizePad():
         return sample
 
 
-class Augment():
-    """
-    Randomly perform a range of data augmentation
-    including translation, rotation, scaling, salt & pepper noise,
-    brightness adjustment, Gamma Correction, blurring and sharpening the image
-    """
-
-    def __init__(self, orig_img_scale=0.5, size=-1, return_pid=False):
-        self.return_pid = return_pid
-        # Generate pre-computation libraries for masks and corners
-        self.mask_path = os.path.expanduser(os.path.join('~', '.echo-net', 'masks'))
-        Path(self.mask_path).mkdir(parents=True, exist_ok=True)
-
-        # Get masks and corners
-        self.orig_img_scale = orig_img_scale
-        self.size = size
-        self.masks = self._get_masks()
-
-        # Define augmentation transforms
-        self.intensity_transformations = [
-            RandomSharpness(),
-            RandomBrightnessAdjustment(),
-            RandomGammaCorrection(),
-            SaltPepperNoise()
-        ]
-        self.positional_transformations = [
-            None,
-            transforms.RandomAffine(0, translate=(0.1, 0.1), fill=FILL_VAL),
-            RandomResize(),
-        ]
-
-    def _get_masks(self):
-        mask_fn = os.path.join(self.mask_path, f'{self.size}_{int(100 * self.orig_img_scale)}_percent.pt')
-        if not os.path.exists(mask_fn):
-            utilities.generate_masks(self.size, self.orig_img_scale)
-        return torch.load(mask_fn)
-
-    def _apply_background_noise(self, sample, mask):
-        background = FILL_VAL * torch.ones(sample.shape)
-        background = background.to(sample.device)
-        if len(sample.shape) == 4 and len(mask.shape) < 4:
-            sample[:, mask == 0] = sample[:, mask == 0] + background[:, mask == 0]
-        else:
-            sample[mask == 0] = sample[mask == 0] + background[mask == 0]
-        return sample
-
-    def _apply_mask(self, sample, mask):
-        return mask * sample
-
-    def _cut_border(self, sample, mask):
-        H, W = sample.shape[-2], sample.shape[-1]
-        sample = transforms.functional.resize(sample, size=[int(1.05 * H), int(1.05 * W)])
-        sample = transforms.functional.center_crop(sample, output_size=[H, W])
-        return sample * mask
-
-    def _add_background_speckle_noise(self, sample):
-        std = 0.3
-        sample[sample == FILL_VAL] = sample[sample == FILL_VAL] + \
-                                     std * sample[sample == FILL_VAL] * torch.randn_like(sample[sample == FILL_VAL])
-        sample = torch.clamp(sample, min=0, max=1)
-        return sample
-
+class Rotate():
     def __call__(self, sample):
-        # Get sample and corresponding mask
-        sample, p_id = sample
-        # If processing multiple samples, assemble mask tensor and reshape samples
-        if isinstance(p_id, tuple):
-            B, T, _, H, W = sample.shape
-            sample = sample.reshape(-1, 1, H, W)
-            mask = torch.cat([self.masks[id].unsqueeze(0) for id in p_id])
-            mask = mask.reshape(B, 1, H, W).repeat(1, T, 1, 1).reshape(-1, 1, H, W)
-        else:
-            mask = self.masks[p_id].unsqueeze(0)
-
-        # Try moving mask to gpu if available
-        mask = mask.to(sample.device)
-
-        # Apply intensity transformations
-        for t in self.intensity_transformations:
-            if 0.7 < torch.rand(1):
-                sample = t(sample)
-
-        # Cut off black border around echo
-        sample = self._cut_border(sample, mask)
-
-        # Add background noise
-        sample = self._apply_background_noise(sample, mask)
-
-        # Define Random Rotation around top corner
-        if self.positional_transformations[0] is None:
-            rot_center = (sample.shape[1] // 2, 0)
-            rand_rot = transforms.RandomRotation(15, fill=FILL_VAL, center=rot_center)
-            self.positional_transformations[0] = rand_rot
-
-        # Apply positional transformations
-        for t in self.positional_transformations:
-            if 0.7 < torch.rand(1):
-                sample = t(sample)
-
-        # Retrieve original shape
-        sample = self._apply_mask(sample, mask)
-
-        # Add speckle noise to background
-        sample = self._add_background_speckle_noise(sample)
-
-        # Reshape sample back to batched timeseries in case of batch augmentation
-        if isinstance(p_id, tuple):
-            sample = sample.reshape(B, T, 1, H, W)
-
-        if self.return_pid:
-            return (sample, p_id)
+        deg = random.uniform(-5, 5)  # Up to 5 degrees
+        sample = transforms.functional.rotate(sample, angle=deg)
         return sample
 
 
-class AugmentSimpleIntensityOnly():
+class Translate():
+    def __call__(self, sample):
+        transl = random.randint(-5, 5)  # Up to 5 degrees
+        sample = transforms.functional.affine(sample, angle=0, translate=[transl, transl], scale=1.0, shear=0.0)
+        return sample
+
+
+class Intesity():
     """
     Randomly perform a range of data augmentation
     including translation, rotation, scaling, salt & pepper noise,
@@ -490,8 +123,8 @@ class RandomResize():
 
     def __init__(self, pad_noise=False):
         self.transforms = [
-            RandResizeCrop(1.4),
-            RandResizePad(0.6, pad_noise),
+            RandResizeCrop(1.15),  # max scale up 1.15x
+            RandResizePad(0.85, pad_noise),  # max scale down by 0.85x
         ]
 
     def __call__(self, sample):
@@ -541,7 +174,9 @@ class RandomGammaCorrection():
     """
 
     def __call__(self, sample):
-        rand_gamma = random.random() * 1.75 + 0.25
+        # rand_gamma = random.random() * 1.75 + 0.25
+        # Below 0 => makes shadows brighter. Above 0 => makes shadows darker.
+        rand_gamma = random.uniform(0.5, 1.5)  # I prefer not larger range, to keep 'normal' looking
         sample = F.adjust_gamma(sample, gamma=rand_gamma)
         return sample
 
@@ -552,17 +187,19 @@ class RandomSharpness():
     """
 
     def __call__(self, sample):
-        if 0.5 < torch.rand(1):
-            rand_factor = random.random() * 7 + 1
-        else:
-            rand_factor = random.random()
+        if 0.5 < torch.rand(1):  # 50 % increase sharpness (e.g. 2 increases sharpness by 2)
+            # rand_factor = random.random() * 7 + 1
+            rand_factor = random.uniform(1, 4)  # max 4x sharpness
+        else:  # 50% of the time, reduce sharpness (by providing number < 1)
+            # 0 gives a blurred image, 1 gives original image
+            rand_factor = random.random()  # num between [0, 1( ==> but in reality no change of exact 0
         sample = F.adjust_sharpness(sample, sharpness_factor=rand_factor)
         return sample
 
 
 class RandomNoise():
     """
-    Add Gaussian noise to the image
+    Add Gaussian noise to the image. Must be called befor normalization
     """
 
     def __init__(self):
@@ -624,60 +261,52 @@ class GaussianSmoothing():
         return sample, p_id
 
 
-class Resize():
-    """
-    Resize image to given size, -1 for original size
-    """
-
-    def __init__(self, size, return_pid=True):
-        self.return_pid = return_pid
-        if size == -1:
-            self.transform = Identity()
-        else:
-            self.transform = transforms.Resize((size, size))
-
-    def __call__(self, sample):
-        sample, p_id = sample
-        if self.return_pid:
-            return self.transform(sample), p_id
-        else:
-            return self.transform(sample)
+# class LaplaceNoise():
+#     def __init(self, mean=0.0, std=1.0):
+#         self.mean = mean
+#         self.std = std
+#
+#     def __call__(self, sample):
+#         return sample + np.random.laplace() * self.std + self.mean
 
 
-def get_transforms(
-        resize=256,
-        crop_to_corner=False,
-        shape_equalization=False,
-        noise=False,
-        mask=False,
-        min_mask=False,
-        augment=True,
-        with_pid=False,
-        dataset_orig_img_scale=0.25,
-        num_video_frames=None
-):
-    """
-    Compose a set of pre-specified transformation using the torchvision transform compose class
-    """
-    assert not (
-                crop_to_corner and shape_equalization), "Cannot do crop_to_corner and shape_equalization simultaneously."
-    if shape_equalization and (mask or min_mask):
-        print("Ignoring masking transformations and random resizing because shape_equalization equals True.")
-    return transforms.Compose(
-        [
-            VideoSubsample(num_video_frames) if num_video_frames is not None else Identity(),
-            HistEq(),
-            ConvertToTensor(),
-            Normalize(),
-            CropToCorners(orig_img_scale=dataset_orig_img_scale) if crop_to_corner else Identity(),
-            ShapeEqualization(resize, orig_img_scale=dataset_orig_img_scale) if shape_equalization else Identity(),
-            #             GaussianSmoothing(),
-            Resize(resize, return_pid=(with_pid or augment)) if not shape_equalization else Identity(),
-            Augment(orig_img_scale=dataset_orig_img_scale, size=resize, return_pid=with_pid) if augment else Identity(),
-            RandomNoise() if noise else Identity(),
-            RandomMask(resize=resize,
-                       orig_img_scale=dataset_orig_img_scale) if mask and not shape_equalization else Identity(),
-            MinMask(resize=resize,
-                    orig_img_scale=dataset_orig_img_scale) if min_mask and not shape_equalization else Identity(),
-        ]
-    )
+def get_augment_transforms(hist_eq=True):
+    rand_intensity_aug = transforms.RandomApply([Intesity()], 0.65)  # 65% of images get intensity transforms (sharpness, gamma, brightness - each with individual 50 % chance)
+    rand_resize = transforms.RandomApply([RandomResize()])  # 50 % of image get resizing (either pad or zoom)
+    rand_rotate = transforms.RandomApply([Rotate()])  # 50 % of images will be rotated
+    rand_translate = transforms.RandomApply([Translate()])  # 50 % of images will be translated
+    if hist_eq:
+        overall_augments = [HistEq(),
+                            transforms.ToPILImage(),
+                            transforms.Resize(size=(128, 128), interpolation=i_mode.BICUBIC),
+                            transforms.ToTensor(),
+                            rand_intensity_aug,
+                            rand_resize,
+                            rand_rotate,
+                            rand_translate,
+                            Normalize()]  # End with normalizing
+    else:
+        overall_augments = [transforms.ToPILImage(),
+                            transforms.Resize(size=(128, 128), interpolation=i_mode.BICUBIC),
+                            transforms.ToTensor(),
+                            rand_intensity_aug,
+                            rand_resize,
+                            rand_rotate,
+                            rand_translate,
+                            Normalize()]  # End with normalizing
+    return transforms.Compose(overall_augments)
+
+
+def get_base_transforms(hist_eq=True):
+    if hist_eq:
+        base_trans = [HistEq(),
+                      transforms.ToPILImage(),
+                      transforms.Resize(size=(128, 128), interpolation=i_mode.BICUBIC),
+                      transforms.ToTensor(),
+                      Normalize()]  # End with normalizing
+    else:
+        base_trans = [transforms.ToPILImage(),
+                      transforms.Resize(size=(128, 128), interpolation=i_mode.BICUBIC),
+                      transforms.ToTensor(),
+                      Normalize()]  # End with normalizing
+    return transforms.Compose(base_trans)
