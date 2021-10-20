@@ -7,6 +7,7 @@ from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 """
 This script splits videos into training and validation data in a stratified way, keeping class ratios - according
 to a given class formulation (i.e. the method used to convert raw labels to classes).
+When --k is specified > 1, this generates train-valid splits for k-fold cross-validation.
 """
 
 parser = ArgumentParser(
@@ -26,6 +27,9 @@ parser.add_argument('--scale_factor', default=0.5,
                     help='Scaling factor of the cached videos')
 parser.add_argument('--out_dir', default='index_files',
                     help='Path to directory where results should be stored')
+parser.add_argument('--no_folds', type=int, default=None,
+                    help='How many folds to use for K-fold validation, i.e. how many different train-val splits.'
+                         'If None, only single split is created')
 
 
 def print_res(train_labels, valid_labels):
@@ -77,32 +81,40 @@ def main():
             with open(label_file_path, "rb") as file:
                 label_dict = pickle.load(file)
             label_dicts.append(label_dict)
+    else:
+        with open(args.label_file_path, "rb") as file:
+            label_dicts = [pickle.load(file)]
+        label_files = [os.path.basename(args.label_file_path)]
 
+    no_splits = 1 if args.no_folds is None else args.no_folds
     for label_dict, label_file in zip(label_dicts, label_files):
-        print("\nResults for", label_file)
-        labels_in_use = []
-        video_ids_in_use = []
-        video_ending_len = len(video_ending)
-        for video in kapap_cache_videos:
-            video_id = int(video[:-video_ending_len])
-            if video_id not in label_dict:
-                print(f'video {video_id} does not have a legal label - skipping')
-            else:
-                label = label_dict[video_id]
-                labels_in_use.append(label)
-                video_ids_in_use.append(video_id)
-        # Split samples into train and test, stratified according to the labels
-        samples_train, samples_test, y_train, y_test = train_test_split(np.asarray(video_ids_in_use), labels_in_use,
-                                                                        test_size=args.valid_ratio,
-                                                                        shuffle=True, stratify=labels_in_use)
-        # Save index files for train and test
-        os.makedirs(args.out_dir, exist_ok=True)
-        file_name = label_file.split('labels_')[1][:-4]
-        np.save(os.path.join(args.out_dir, 'train_samples_' + file_name + '.npy'), samples_train)
-        np.save(os.path.join(args.out_dir, 'test_samples_' + file_name + '.npy'), samples_test)
+        for k in range(no_splits):
+            print("\nResults for", label_file)
+            labels_in_use = []
+            video_ids_in_use = []
+            video_ending_len = len(video_ending)
+            for video in kapap_cache_videos:
+                video_id = int(video[:-video_ending_len])
+                if video_id not in label_dict:
+                    print(f'video {video_id} does not have a legal label - skipping')
+                else:
+                    label = label_dict[video_id]
+                    labels_in_use.append(label)
+                    video_ids_in_use.append(video_id)
+            # Split samples into train and test, stratified according to the labels
+            samples_train, samples_test, y_train, y_test = train_test_split(np.asarray(video_ids_in_use), labels_in_use,
+                                                                            test_size=args.valid_ratio,
+                                                                            shuffle=True, stratify=labels_in_use,
+                                                                            random_state=k)  # seed is the fold id (k)
+            # Save index files for train and test
+            os.makedirs(args.out_dir, exist_ok=True)
+            file_name = label_file.split('labels_')[1][:-4]
+            file_ending = '' if args.no_folds is None else '_' + str(k)
+            np.save(os.path.join(args.out_dir, 'train_samples_' + file_name + file_ending + '.npy'), samples_train)
+            np.save(os.path.join(args.out_dir, 'valid_samples_' + file_name + file_ending + '.npy'), samples_test)
 
-        # Print results
-        print_res(y_train, y_test)
+            # Print results
+            print_res(y_train, y_test)
 
 
 if __name__ == '__main__':
