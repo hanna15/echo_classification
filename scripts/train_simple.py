@@ -233,12 +233,12 @@ def save_model_and_res(model, run_name, target_lst, pred_lst, val_target_lst, va
     model_name = base_name + '.pt'
     targ_name = 'targets_' + base_name + '.npy'
     pred_name = 'preds_' + base_name + '.npy'
-
+    res_dir = 'results'
     torch.save(model.state_dict(), os.path.join('models', model_name))
-    np.save('train_' + targ_name, target_lst)
-    np.save('train_' + pred_name, pred_lst)
-    np.save('val_' + targ_name, val_target_lst)
-    np.save('val_' + pred_name, val_pred_lst)
+    np.save(os.path.join(res_dir, 'train_' + targ_name), target_lst)
+    np.save(os.path.join(res_dir, 'train_' + pred_name), pred_lst)
+    np.save(os.path.join(res_dir, 'val_' + targ_name), val_target_lst)
+    np.save(os.path.join(res_dir, 'val_' + pred_name), val_pred_lst)
 
 
 def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run_name, weights=None, binary=False,
@@ -357,6 +357,7 @@ def get_resnet(num_classes=3):
 
 
 def main():
+    torch.manual_seed(0)  # Fix a seed, to increase reproducibility
     run_name = get_run_name()
     use_wandb = False  # Set this to false for now as can't seem to use on cluster
     if not args.debug:
@@ -378,10 +379,14 @@ def main():
     valid_index_file_path = os.path.join('index_files', 'valid_samples_' + args.label_type + idx_file_end + '.npy')
 
     # Data & Transforms (TODO: Later have a separate transforms class)
-    if args.augment and not args.load_model:  # Only add augmentation if we are training
-        train_transforms = get_augment_transforms(hist_eq=args.hist_eq)
+    if args.augment and not args.load_model:  # All augmentations
+        train_transforms = get_augment_transforms(hist_eq=args.hist_eq)  # all other default true
     else:
-        train_transforms = get_base_transforms(hist_eq=args.hist_eq)
+        individual_augments = [args.hist_eq, args.noise, args.intensity, args.rand_resize, args.rotate, args.translate]
+        if any(individual_augments):  # Only some specific augmentations
+            train_transforms = get_augment_transforms(individual_augments)
+        else:  # No augmentation
+            train_transforms = get_base_transforms(hist_eq=args.hist_eq)
     valid_transforms = get_base_transforms(hist_eq=args.hist_eq)
 
     train_dataset = EchoDataset(train_index_file_path, label_path, videos_dir=args.videos_dir,
