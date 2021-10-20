@@ -74,7 +74,7 @@ parser.add_argument('--pretrained', action='store_true', help='Set this flag to 
 # General parameters
 parser.add_argument('--debug', action='store_true', help='set this flag when debugging, to not connect to wandb, etc')
 parser.add_argument('--visualise_frames', action='store_true', help='set this flag to visualise frames')
-parser.add_argument('--log_freq', type=int, default=5,
+parser.add_argument('--log_freq', type=int, default=2,
                     help='How often to log to tensorboard and w&B, and save models. Save logs every log_freq th epoch, '
                          'but save models every (log_freq * 2) th epoch.')
 parser.add_argument('--tb_dir', type=str, default='tb_runs',
@@ -94,7 +94,7 @@ def get_run_name():
     if args.k is None:
         k = ''
     else:
-        k = '.k_' + str(args.k)
+        k = '.k' + str(args.k)
     run_name = run_id + 'lt_' + args.label_type + k + '.lr_' + str(args.lr) + '.batch_' + str(args.batch_size)
     if args.decay_factor > 0.0:
         run_name += str(args.decay_factor)  # only add to description if not default
