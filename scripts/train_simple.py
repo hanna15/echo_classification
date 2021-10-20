@@ -6,12 +6,11 @@ from torch import cuda, device
 from torch import nn, optim, no_grad
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from torch.utils.tensorboard import SummaryWriter
-from torchvision import models, transforms
-from torchvision.transforms import InterpolationMode as i_mode
+from torchvision import models
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 import wandb
 from echo_ph.data.echo_dataset import EchoDataset
-from utils.transforms import Normalize, get_augment_transforms, get_base_transforms
+from utils.transforms import get_augment_transforms, get_base_transforms
 from sklearn.metrics import f1_score, accuracy_score, balanced_accuracy_score, roc_auc_score
 import warnings
 
@@ -48,7 +47,17 @@ parser.add_argument('--scaling_factor', default=0.25, help='How much to scale (d
                                                           'size. Also determines the cache sub-folder')
 parser.add_argument('--num_workers', type=int, default=4, help='The number of workers for loading data')
 parser.add_argument('--augment', action='store_true',
-                    help='set this flag to apply augmentation transformations to training data')
+                    help='set this flag to apply ALL augmentation transformations to training data')
+parser.add_argument('--noise', action='store_true',
+                    help='Apply random noise augmentation')
+parser.add_argument('--intensity', action='store_true',
+                    help='Apply random intensity augmentation')
+parser.add_argument('--rand_resize', action='store_true',
+                    help='Apply random resizing augmentation')
+parser.add_argument('--rotate', action='store_true',
+                    help='Apply random rotating augmentation')
+parser.add_argument('--translate', action='store_true',
+                    help='Apply random translating augmentation')
 parser.add_argument('--hist_eq', action='store_true',
                     help='set this flag to apply histogram equalisation to training and validation data')
 # Class imbalance
@@ -69,14 +78,15 @@ parser.add_argument('--decay_patience', type=float, default=1000,
                     help='Number of epochs to decay lr for decay on plateau')
 parser.add_argument('--min_lr', type=float, default=0.0, help='Min learning rate for reducing lr')
 parser.add_argument('--cooldown', type=float, default=0, help='cool-down for reducing lr on plateau')
+parser.add_argument('--early_stop', type=int, default=100,
+                    help='Patience (in no. epochs) for early stopping due to no improvement of valid f1 score')
 parser.add_argument('--pretrained', action='store_true', help='Set this flag to use pre-trained resnet')
 
 # General parameters
 parser.add_argument('--debug', action='store_true', help='set this flag when debugging, to not connect to wandb, etc')
 parser.add_argument('--visualise_frames', action='store_true', help='set this flag to visualise frames')
 parser.add_argument('--log_freq', type=int, default=2,
-                    help='How often to log to tensorboard and w&B, and save models. Save logs every log_freq th epoch, '
-                         'but save models every (log_freq * 2) th epoch.')
+                    help='How often to log to tensorboard and w&B.')
 parser.add_argument('--tb_dir', type=str, default='tb_runs',
                     help='Tensorboard directory - where tensorboard logs are stored.')
 
@@ -107,9 +117,19 @@ def get_run_name():
     if args.class_balance_per_epoch:
         run_name += '_bal'
     if args.weight_loss:
-        run_name += '_weight'
+        run_name += '_w'
     if args.hist_eq:
         run_name += '_hist'
+    if args.noise:
+        run_name += '_n'
+    if args.intensity:
+        run_name += '_i'
+    if args.rand_resize:
+        run_name += '_re'
+    if args.rotate:
+        run_name += '_rot'
+    if args.rotate:
+        run_name += '_t'
     return run_name
 
 
@@ -205,6 +225,22 @@ def evaluate(model, model_name, train_loader, valid_loader, data_len, valid_len,
         print(metric, ":", epoch_valid_metrics[metric])
 
 
+def save_model_and_res(model, run_name, target_lst, pred_lst, val_target_lst, val_pred_lst, epoch=None):
+    if epoch is None:
+        base_name = run_name + '_final'
+    else:
+        base_name = run_name + '_e' + str(epoch)
+    model_name = base_name + '.pt'
+    targ_name = 'targets_' + base_name + '.npy'
+    pred_name = 'preds_' + base_name + '.npy'
+
+    torch.save(model.state_dict(), os.path.join('models', model_name))
+    np.save('train_' + targ_name, target_lst)
+    np.save('train_' + pred_name, pred_lst)
+    np.save('val_' + targ_name, val_target_lst)
+    np.save('val_' + pred_name, val_pred_lst)
+
+
 def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run_name, weights=None, binary=False,
           use_wandb=False):
 
@@ -216,7 +252,8 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
         criterion = nn.CrossEntropyLoss(weight=weights)  # if weights is None, no weighting is performed
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=args.decay_factor, patience=args.decay_patience,
                                                      min_lr=args.min_lr, cooldown=args.cooldown)
-
+    best_early_stop = float("inf")
+    num_val_fails = 0
     print("Start training on", data_len, "training samples, and", valid_len, "validation samples")
     for epoch in range(args.max_epochs):
         epoch_loss = 0
@@ -265,7 +302,6 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
             for metric in epoch_valid_metrics:
                 print(metric, ":", epoch_valid_metrics[metric])
 
-            # Todo: Create a metric dictionary that can be updated with more metrics.
             if not args.debug:  # log and save results
                 log_dict = {
                     "epoch": epoch,
@@ -281,20 +317,33 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
                     step = int(epoch / args.log_freq)
                     tb_writer.add_scalar(metric_key, log_dict[metric_key], step)
 
-                if epoch % (2 * args.log_freq) == 0:  # save model checkpoints at 2x lower resolution than saving logs
-                    torch.save(model.state_dict(), os.path.join('models', run_name + '.pt'))
+                if args.early_stop:
+                    # Note, currently base early stopping and best model on f1 score of valid set (instead of loss !)
+                    if log_dict["f1/valid"] < best_early_stop:
+                        best_early_stop = log_dict["f1/valid"]
+                        num_val_fails = 0
+                        if epoch != 0:
+                            save_model_and_res(model, run_name, target_lst, pred_lst, targ_lst_valid, pred_lst_valid, epoch)
+                    else:
+                        num_val_fails += 1
+
+                    if num_val_fails >= args.early_stop:
+                        print('== Early stop training after', num_val_fails,
+                              'epochs without validation loss improvement')
+                        break
             else:
                 target_lst = [t.item() for t in epoch_targets]
                 vals, cnts = np.unique(target_lst, return_counts=True)
                 print('epoch target distribution')
                 for val, cnt in zip(vals, cnts):
                     print(val, ':', cnt)
+
     if not args.debug:
         tb_writer.close()
 
 
 def get_resnet(num_classes=3):
-    model = models.resnet18(pretrained=args.pretrained)  # TODO: Later move to resnet-50 ==> better to start small.
+    model = models.resnet18(pretrained=args.pretrained)
     in_channels = 1
     # Change the input layer to take Grayscale image, instead of RGB images (set in_channels as 1)
     # original definition of the first layer on the ResNet class
@@ -353,6 +402,7 @@ def main():
     # Model
     model = get_resnet(num_classes=len(train_dataset.labels)).to(device)
     os.makedirs('models', exist_ok=True)  # create model results dir, if not exists
+    os.makedirs('results', exist_ok=True)  # create results dir, if not exists
 
     if args.load_model:  # Create eval datasets (no shuffle) and evaluate model
         eval_loader_train = DataLoader(train_dataset, args.batch_size, shuffle=False, num_workers=num_workers)
