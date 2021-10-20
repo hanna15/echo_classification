@@ -86,7 +86,7 @@ class Translate():
         return sample
 
 
-class Intesity():
+class Intensity():
     """
     Randomly perform a range of data augmentation
     including translation, rotation, scaling, salt & pepper noise,
@@ -100,7 +100,7 @@ class Intesity():
             RandomSharpness(),
             RandomBrightnessAdjustment(),
             RandomGammaCorrection()  #,
-            #SaltPepperNoise()
+            # SaltPepperNoise()
         ]
 
     def __call__(self, sample):
@@ -270,45 +270,35 @@ class GaussianSmoothing():
 #         return sample + np.random.laplace() * self.std + self.mean
 
 
-def get_augment_transforms(hist_eq=True):
-    rand_intensity_aug = transforms.RandomApply([Intesity()], 0.65)  # 65% of images get intensity transforms (sharpness, gamma, brightness - each with individual 50 % chance)
-    rand_resize = transforms.RandomApply([RandomResize()])  # 50 % of image get resizing (either pad or zoom)
-    rand_rotate = transforms.RandomApply([Rotate()])  # 50 % of images will be rotated
-    rand_translate = transforms.RandomApply([Translate()])  # 50 % of images will be translated
-    rand_noise = transforms.RandomApply([RandomNoise()])
-    if hist_eq:
-        overall_augments = [HistEq(),
-                            transforms.ToPILImage(),
-                            transforms.Resize(size=(128, 128), interpolation=i_mode.BICUBIC),
-                            transforms.ToTensor(),
-                            rand_noise,
-                            rand_intensity_aug,
-                            rand_resize,
-                            rand_rotate,
-                            rand_translate,
-                            Normalize()]  # End with normalizing
-    else:
-        overall_augments = [transforms.ToPILImage(),
-                            transforms.Resize(size=(128, 128), interpolation=i_mode.BICUBIC),
-                            transforms.ToTensor(),
-                            rand_intensity_aug,
-                            rand_resize,
-                            rand_rotate,
-                            rand_translate,
-                            Normalize()]  # End with normalizing
-    return transforms.Compose(overall_augments)
-
-
 def get_base_transforms(hist_eq=True):
+    augment_list = []
     if hist_eq:
-        base_trans = [HistEq(),
-                      transforms.ToPILImage(),
-                      transforms.Resize(size=(128, 128), interpolation=i_mode.BICUBIC),
-                      transforms.ToTensor(),
-                      Normalize()]  # End with normalizing
-    else:
-        base_trans = [transforms.ToPILImage(),
-                      transforms.Resize(size=(128, 128), interpolation=i_mode.BICUBIC),
-                      transforms.ToTensor(),
-                      Normalize()]  # End with normalizing
-    return transforms.Compose(base_trans)
+        augment_list.append(HistEq())
+    augment_list.extend(get_list_of_base_transforms_except_norm())
+    augment_list.append(Normalize())
+    return transforms.Compose(augment_list)
+
+
+def get_list_of_base_transforms_except_norm():
+    return [transforms.ToPILImage(),
+            transforms.Resize(size=(128, 128), interpolation=i_mode.BICUBIC),
+            transforms.ToTensor()]
+
+
+def get_augment_transforms(hist_eq=True, noise=True, intensity=True, rand_resize=True, rotate=True, translate=True):
+    augment_list = []
+    if hist_eq:
+        augment_list.append(HistEq())
+    augment_list.extend(get_list_of_base_transforms_except_norm())  # base transforms that must always be present
+    if intensity:
+        augment_list.append(transforms.RandomApply([Intensity()], 0.65))
+    if noise:
+        augment_list.append(transforms.RandomApply([RandomNoise()]))
+    if rand_resize:
+        augment_list.append(transforms.RandomApply([RandomResize()]))
+    if rotate:
+        augment_list.append(transforms.RandomApply([Rotate()]))
+    if translate:
+        augment_list.append(transforms.RandomApply([Translate()]))
+    augment_list.append(Normalize())  # Always normalize
+    return transforms.Compose(augment_list)
