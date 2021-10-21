@@ -10,6 +10,9 @@ from torchvision import models
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 import wandb
 from echo_ph.data.echo_dataset import EchoDataset
+from echo_ph.models.conv_nets import ConvNet, SimpleConvNet
+from echo_ph.models.my_resnet import resnet_simpler
+from echo_ph.data.ph_labels import long_label_type_to_short
 from utils.transforms import get_augment_transforms, get_base_transforms
 from sklearn.metrics import f1_score, accuracy_score, balanced_accuracy_score, roc_auc_score
 import warnings
@@ -65,11 +68,15 @@ parser.add_argument('--class_balance_per_epoch', action='store_true',
                     help='set this flag to have ca. equal no. samples of each class per epoch / oversampling')
 parser.add_argument('--weight_loss', action='store_true',
                     help='set this flag to weight loss, according to class imbalance')
-# Training parameters
+# Training & models parameters
 parser.add_argument('--load_model', action='store_true',
                     help='Set this flag to load an already trained model to predict only, instead of training it.'
                          'If args.model_name is set, load model from that path. Otherwise, get model name acc. to'
                          'function get_run_name(), and load the corresponding model')
+parser.add_argument('--model', default='resnet', choices=['resnet', 'res_simple', 'conv', 'simple_conv'],
+                    help='What model architecture to use.')
+parser.add_argument('--dropout', type=float, default=0.5, help='Dropout value for those model who use dropout')
+parser.add_argument('--optimizer', choices=['adam', 'adamw'], help='What optimizer to use.')
 parser.add_argument('--batch_size', type=int, default=128, help='Batch size for training')
 parser.add_argument('--max_epochs', type=int, default=200, help='Max number of epochs to train')
 parser.add_argument('--lr', type=float, default=0.001, help='Learning rate')
@@ -110,7 +117,8 @@ def get_run_name():
         k = ''
     else:
         k = '.k' + str(args.k)
-    run_name = run_id + 'lt_' + args.label_type + k + '.lr_' + str(args.lr) + '.batch_' + str(args.batch_size)
+    run_name = run_id + args.model + '_' + args.optimizer + '_lt_' + long_label_type_to_short[args.label_type]\
+               + k + '.lr_' + str(args.lr) + '.batch_' + str(args.batch_size)
     if args.decay_factor > 0.0:
         run_name += str(args.decay_factor)  # only add to description if not default
     if args.decay_patience < 1000:
@@ -135,6 +143,8 @@ def get_run_name():
         run_name += '_rot'
     if args.rotate:
         run_name += '_t'
+    if args.model != 'resnet':
+        run_name += '_drop' + str(args.dropout)
     return run_name
 
 
@@ -251,8 +261,8 @@ def save_model_and_res(model, run_name, target_lst, pred_lst, val_target_lst, va
         res_dir = os.path.join(BASE_RES_DIR, base_name)
         model_dir = BASE_MODEL_DIR
     else:
-        res_dir = os.path.join(BASE_RES_DIR, 'fold' + k, base_name)
-        model_dir = os.path.join(BASE_MODEL_DIR, 'fold' + k)
+        res_dir = os.path.join(BASE_RES_DIR, 'fold' + str(k), base_name)
+        model_dir = os.path.join(BASE_MODEL_DIR, 'fold' + str(k))
 
     os.makedirs(res_dir, exist_ok=True)  # create sub-directory for this base model name
 
@@ -267,11 +277,11 @@ def save_model_and_res(model, run_name, target_lst, pred_lst, val_target_lst, va
     np.save(os.path.join(res_dir, 'val_' + pred_file_name), val_pred_lst)
 
 
-def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run_name, weights=None, binary=False,
-          use_wandb=False):
+def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run_name, optimizer, weights=None,
+          binary=False, use_wandb=False):
 
     # Set training loss, optimizer and training parameters
-    optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    # optimizer = optim.Adam(model.parameters(), lr=args.lr)
     if binary:
         criterion = nn.BCEWithLogitsLoss(weight=weights)  # if weights is None, no weighting is performed
     else:
@@ -430,14 +440,25 @@ def main():
     # For the data loader, if only use 1 worker, set it to 0, so data is loaded on the main process
     num_workers = (0 if args.num_workers == 1 else args.num_workers)
 
-    # Model
-    model = get_resnet(num_classes=len(train_dataset.labels)).to(device)
+    # Model & Optimizers
+    if args.model == 'resnet':
+        model = get_resnet(num_classes=len(train_dataset.labels)).to(device)
+    elif args.model == 'res_simple':
+        model = resnet_simpler(num_classes=len(train_dataset.labels), drop_prob=args.dropout).to(device)
+    elif args.model == 'conv':
+        model = ConvNet(num_classes=len(train_dataset.labels)).to(device)
+    else:
+        model = SimpleConvNet(num_classes=len(train_dataset.labels)).to(device)
     os.makedirs(BASE_MODEL_DIR, exist_ok=True)  # create model results dir, if not exists
     os.makedirs(BASE_RES_DIR, exist_ok=True)  # create results dir, if not exists
     for i in range(MAX_NO_FOLDS):
         os.makedirs(os.path.join(BASE_MODEL_DIR, 'fold' + str(i)), exist_ok=True)  # create model res dir for each fold
         os.makedirs(os.path.join(BASE_RES_DIR, 'fold' + str(i)), exist_ok=True)  # create res dir for each fold
 
+    if args.optimizer == 'adam':
+        optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    else:  # optimizer = adamw
+        optimizer = optim.AdamW(model.parameters(), lr=args.lr)  # weight-decay provided by default
     if args.load_model:  # Create eval datasets (no shuffle) and evaluate model
         eval_loader_train = DataLoader(train_dataset, args.batch_size, shuffle=False, num_workers=num_workers)
         eval_loader_valid = DataLoader(valid_dataset, args.batch_size, shuffle=False, num_workers=num_workers)
@@ -452,7 +473,7 @@ def main():
             train_loader = DataLoader(train_dataset, args.batch_size, shuffle=True, num_workers=num_workers)
         valid_loader = DataLoader(valid_dataset, args.batch_size, shuffle=False, num_workers=num_workers)
 
-        train(model, train_loader, valid_loader, len(train_dataset), len(valid_dataset), tb_writer, run_name,
+        train(model, train_loader, valid_loader, len(train_dataset), len(valid_dataset), tb_writer, run_name, optimizer,
               weights=class_weights, binary=binary, use_wandb=use_wandb)
 
 
