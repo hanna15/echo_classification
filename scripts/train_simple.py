@@ -91,6 +91,10 @@ parser.add_argument('--tb_dir', type=str, default='tb_runs_cv',
                     help='Tensorboard directory - where tensorboard logs are stored.')
 
 MAX_NO_FOLDS = 5
+BASE_RES_DIR = 'results'
+BASE_MODEL_DIR = 'models'
+TORCH_SEED = 0
+
 
 def get_run_name():
     """
@@ -191,7 +195,7 @@ def run_batch(batch, model, criterion=None, binary=False):
 
 
 def evaluate(model, model_name, train_loader, valid_loader, data_len, valid_len, binary=False):
-    model_path = os.path.join('models', model_name)
+    model_path = os.path.join(BASE_MODEL_DIR, model_name)
     model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
 
     valid_num_batches = math.ceil(valid_len / args.batch_size)
@@ -227,25 +231,40 @@ def evaluate(model, model_name, train_loader, valid_loader, data_len, valid_len,
 
 
 def save_model_and_res(model, run_name, target_lst, pred_lst, val_target_lst, val_pred_lst, epoch=None, k=None):
+    """
+    Save the given model, as well as the outputs, targets & metrics
+    :param model: The model to save
+    :param run_name: Descriptive name of this run / model
+    :param target_lst: List of targets for training data
+    :param pred_lst: List of predictions for training data
+    :param val_target_lst: List of targets for validation data
+    :param val_pred_lst: List of predictions for validation data
+    :param epoch: Current epoch for the given model
+    :param k: If cross-validation is being used, this is the current fold
+    """
     if epoch is None:
         base_name = run_name + '_final'
-    else:
+    else:  # Append epoch name to the model name
         base_name = run_name + '_e' + str(epoch)
-    if k:
-        res_dir = os.path.join('results', 'fold' + k, base_name)
-        model_dir = os.path.join('models', 'fold' + k)
-    else:
-        res_dir = os.path.join('results', base_name)
-        model_dir = 'models'
-    model_name = base_name + '.pt'
-    targ_name = 'targets_' + base_name + '.npy'
-    pred_name = 'preds_' + base_name + '.npy'
 
-    torch.save(model.state_dict(), os.path.join(model_dir, model_name))
-    np.save(os.path.join(res_dir, 'train_' + targ_name), target_lst)
-    np.save(os.path.join(res_dir, 'train_' + pred_name), pred_lst)
-    np.save(os.path.join(res_dir, 'val_' + targ_name), val_target_lst)
-    np.save(os.path.join(res_dir, 'val_' + pred_name), val_pred_lst)
+    if k is None:  # If not k-fold cross validation, save results in base dirs
+        res_dir = os.path.join(BASE_RES_DIR, base_name)
+        model_dir = BASE_MODEL_DIR
+    else:
+        res_dir = os.path.join(BASE_RES_DIR, 'fold' + k, base_name)
+        model_dir = os.path.join(BASE_MODEL_DIR, 'fold' + k)
+
+    os.makedirs(res_dir, exist_ok=True)  # create sub-directory for this base model name
+
+    model_file_name = base_name + '.pt'
+    targ_file_name = 'targets_' + base_name + '.npy'
+    pred_file_name = 'preds_' + base_name + '.npy'
+
+    torch.save(model.state_dict(), os.path.join(model_dir, model_file_name))
+    np.save(os.path.join(res_dir, 'train_' + targ_file_name), target_lst)
+    np.save(os.path.join(res_dir, 'train_' + pred_file_name), pred_lst)
+    np.save(os.path.join(res_dir, 'val_' + targ_file_name), val_target_lst)
+    np.save(os.path.join(res_dir, 'val_' + pred_file_name), val_pred_lst)
 
 
 def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run_name, weights=None, binary=False,
@@ -364,7 +383,9 @@ def get_resnet(num_classes=3):
 
 
 def main():
-    torch.manual_seed(0)  # Fix a seed, to increase reproducibility
+    torch.manual_seed(TORCH_SEED)  # Fix a seed, to increase reproducibility
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print('Will be training on device', device)
     run_name = get_run_name()
     use_wandb = False  # Set this to false for now as can't seem to use on cluster
     if not args.debug:
@@ -377,15 +398,13 @@ def main():
     else:
         tb_writer = None
 
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print('Will be training on device', device)
     binary = True if args.label_type.startswith('2class') else False
     label_path = os.path.join('label_files', 'labels_' + args.label_type + '.pkl')
     idx_file_end = '' if args.k is None else '_' + str(args.k)
     train_index_file_path = os.path.join('index_files', 'train_samples_' + args.label_type + idx_file_end + '.npy')
     valid_index_file_path = os.path.join('index_files', 'valid_samples_' + args.label_type + idx_file_end + '.npy')
 
-    # Data & Transforms (TODO: Later have a separate transforms class)
+    # Data & Transforms
     if args.augment and not args.load_model:  # All augmentations
         train_transforms = get_augment_transforms(hist_eq=args.hist_eq)  # all other default true
     else:
@@ -413,12 +432,11 @@ def main():
 
     # Model
     model = get_resnet(num_classes=len(train_dataset.labels)).to(device)
-    os.makedirs('models', exist_ok=True)  # create model results dir, if not exists
-    os.makedirs('results', exist_ok=True)  # create results dir, if not exists
+    os.makedirs(BASE_MODEL_DIR, exist_ok=True)  # create model results dir, if not exists
+    os.makedirs(BASE_RES_DIR, exist_ok=True)  # create results dir, if not exists
     for i in range(MAX_NO_FOLDS):
-        os.makedirs(os.path.join('models', 'fold' + str(i)), exist_ok=True)  # create model results dir, if not exists
-        os.makedirs(os.path.join('results', 'fold' + str(i)), exist_ok=True)  # create results dir, if not exists
-    os.makedirs('results', exist_ok=True)  # create results dir, if not exists
+        os.makedirs(os.path.join(BASE_MODEL_DIR, 'fold' + str(i)), exist_ok=True)  # create model res dir for each fold
+        os.makedirs(os.path.join(BASE_RES_DIR, 'fold' + str(i)), exist_ok=True)  # create res dir for each fold
 
     if args.load_model:  # Create eval datasets (no shuffle) and evaluate model
         eval_loader_train = DataLoader(train_dataset, args.batch_size, shuffle=False, num_workers=num_workers)
