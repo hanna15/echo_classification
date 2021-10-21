@@ -20,7 +20,7 @@ class SimpleConvNet(nn.Module):
 
 
 class ConvNet(nn.Module):
-    def __init__(self, num_classes):
+    def __init__(self, num_classes, dropout_val):
         super(ConvNet, self).__init__()
         self.layer1 = nn.Sequential(
             nn.Conv2d(1, 32, kernel_size=(5, 5), stride=(1, 1), padding=2),
@@ -30,7 +30,7 @@ class ConvNet(nn.Module):
             nn.Conv2d(32, 64, kernel_size=(5, 5), stride=(1, 1), padding=2),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2, stride=2))
-        self.drop_out = nn.Dropout()
+        self.drop_out = nn.Dropout(dropout_val)
         self.fc1 = nn.Linear(32 * 32 * 64, 1000)
         self.fc2 = nn.Linear(1000, num_classes)
 

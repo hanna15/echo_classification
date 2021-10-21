@@ -446,7 +446,7 @@ def main():
     elif args.model == 'res_simple':
         model = resnet_simpler(num_classes=len(train_dataset.labels), drop_prob=args.dropout).to(device)
     elif args.model == 'conv':
-        model = ConvNet(num_classes=len(train_dataset.labels)).to(device)
+        model = ConvNet(num_classes=len(train_dataset.labels), dropout_val=args.dropout).to(device)
     else:
         model = SimpleConvNet(num_classes=len(train_dataset.labels)).to(device)
     os.makedirs(BASE_MODEL_DIR, exist_ok=True)  # create model results dir, if not exists
