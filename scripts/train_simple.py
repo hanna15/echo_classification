@@ -76,7 +76,7 @@ parser.add_argument('--load_model', action='store_true',
 parser.add_argument('--model', default='resnet', choices=['resnet', 'res_simple', 'conv', 'simple_conv'],
                     help='What model architecture to use.')
 parser.add_argument('--dropout', type=float, default=0.5, help='Dropout value for those model who use dropout')
-parser.add_argument('--optimizer', choices=['adam', 'adamw'], help='What optimizer to use.')
+parser.add_argument('--optimizer', default='adam', choices=['adam', 'adamw'], help='What optimizer to use.')
 parser.add_argument('--batch_size', type=int, default=128, help='Batch size for training')
 parser.add_argument('--max_epochs', type=int, default=200, help='Max number of epochs to train')
 parser.add_argument('--lr', type=float, default=0.001, help='Learning rate')
