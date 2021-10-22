@@ -89,7 +89,7 @@ parser.add_argument('--cooldown', type=float, default=0, help='cool-down for red
 parser.add_argument('--early_stop', type=int, default=100,
                     help='Patience (in no. epochs) for early stopping due to no improvement of valid f1 score')
 parser.add_argument('--pretrained', action='store_true', help='Set this flag to use pre-trained resnet')
-parser.add_argument('--eval_metric', default=['f1/valid'], choices=['f1/valid', 'loss/valid', 'f1/train', 'loss/train'],
+parser.add_argument('--eval_metric', default='f1/valid', choices=['f1/valid', 'loss/valid', 'f1/train', 'loss/train'],
                     help='Set this the metric you want to use for early stopping')
 
 # General parameters
