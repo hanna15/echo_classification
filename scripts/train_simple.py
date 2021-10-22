@@ -82,7 +82,7 @@ parser.add_argument('--batch_size', type=int, default=128, help='Batch size for 
 parser.add_argument('--max_epochs', type=int, default=300, help='Max number of epochs to train')
 parser.add_argument('--lr', type=float, default=0.001, help='Learning rate')
 parser.add_argument('--decay_factor', type=float, default=0.0, help='Decay lr by this factor for decay on plateau')
-parser.add_argument('--decay_patience', type=float, default=1000,
+parser.add_argument('--decay_patience', type=int, default=1000,
                     help='Number of epochs to decay lr for decay on plateau')
 parser.add_argument('--min_lr', type=float, default=0.0, help='Min learning rate for reducing lr')
 parser.add_argument('--cooldown', type=float, default=0, help='cool-down for reducing lr on plateau')
