@@ -49,6 +49,7 @@ parser.add_argument('--run_id', type=str, default='',
 parser.add_argument('--scaling_factor', default=0.25, help='How much to scale (down) the videos, as a ratio of original '
                                                           'size. Also determines the cache sub-folder')
 parser.add_argument('--num_workers', type=int, default=4, help='The number of workers for loading data')
+parser.add_argument('--max_p', default=90, help='Percentile for max expansion frames')
 parser.add_argument('--augment', action='store_true',
                     help='set this flag to apply ALL augmentation transformations to training data')
 parser.add_argument('--noise', action='store_true',
@@ -88,6 +89,8 @@ parser.add_argument('--cooldown', type=float, default=0, help='cool-down for red
 parser.add_argument('--early_stop', type=int, default=100,
                     help='Patience (in no. epochs) for early stopping due to no improvement of valid f1 score')
 parser.add_argument('--pretrained', action='store_true', help='Set this flag to use pre-trained resnet')
+parser.add_argument('--eval_metric', default=['f1/valid'], choices=['f1/valid', 'loss/valid', 'f1/train', 'loss/train'],
+                    help='Set this the metric you want to use for early stopping')
 
 # General parameters
 parser.add_argument('--debug', action='store_true', help='set this flag when debugging, to not connect to wandb, etc')
@@ -184,12 +187,12 @@ def run_batch(batch, model, criterion=None, binary=False):
     :param model: The seq2seq model
     :param criterion: The criterion for the loss. Set to None during evaluation (no training).
     :param binary: Set to True if this is binary classification.
-    :param metric_prefix: Set to a string to prefix each metric key in metric-dict, if desired.
     :return: The required metrics for this batch, as well as the predictions and targets
     """
     dev = device('cuda' if cuda.is_available() else 'cpu')
-    input = batch["frames"].to(dev)  # batch_size, num_channels, w, h
+    input = batch["frame"].to(dev)  # batch_size, num_channels, w, h
     targets = batch["label"].to(dev)
+    sample_names = batch["sample_name"]
     outputs = model(input)
     # Get loss, if we are training
     if criterion:
@@ -201,7 +204,7 @@ def run_batch(batch, model, criterion=None, binary=False):
             loss = criterion(outputs, targets)
     else:  # when just evaluating, no loss
         loss = None
-    return loss, outputs, targets
+    return loss, outputs, targets, sample_names
 
 
 def evaluate(model, model_name, train_loader, valid_loader, data_len, valid_len, binary=False):
@@ -292,17 +295,19 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
     num_val_fails = 0
     print("Start training on", data_len, "training samples, and", valid_len, "validation samples")
     for epoch in range(args.max_epochs):
-        epoch_loss = 0
-        epoch_valid_loss = 0
+        epoch_loss = epoch_valid_loss = 0
         epoch_targets = []
         epoch_preds = []
+        epoch_samples = []
         epoch_valid_targets = []
         epoch_valid_preds = []
+        epoch_valid_samples = []
 
         # TRAIN
         model.train()
         for train_batch in train_loader:
-            loss, out, targets = run_batch(train_batch, model, criterion, binary=binary)
+            loss, out, targets, sample_names = run_batch(train_batch, model, criterion, binary)
+            epoch_samples.extend(sample_names)
             epoch_targets.extend(targets)
             epoch_preds.extend(torch.max(out, dim=1)[1])
             epoch_loss += loss.item() * args.batch_size
@@ -315,7 +320,8 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
         with no_grad():
             model.eval()
             for valid_batch in valid_loader:
-                val_loss, val_out, val_targets = run_batch(valid_batch, model, criterion, binary=binary)
+                val_loss, val_out, val_targets, val_sample_names = run_batch(valid_batch, model, criterion, binary)
+                epoch_valid_samples.extend(val_sample_names)
                 epoch_valid_targets.extend(val_targets)
                 epoch_valid_preds.extend(torch.max(val_out, dim=1)[1])
                 epoch_valid_loss += val_loss.item() * args.batch_size
@@ -329,6 +335,7 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
             pred_lst_valid = [t.item() for t in epoch_valid_preds]
             epoch_metrics = get_metrics(pred_lst, target_lst, prefix='train', binary=binary)
             epoch_valid_metrics = get_metrics(pred_lst_valid, targ_lst_valid, prefix='valid', binary=binary)
+            print("valid sample names", epoch_valid_samples)
             print('*** epoch:', epoch, '***')
             print('train_loss:', epoch_loss / data_len)
             print('valid loss:', epoch_valid_loss / valid_len)
@@ -355,8 +362,8 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
 
                 if args.early_stop:
                     # Note, currently base early stopping and best model on f1 score of valid set (instead of loss !)
-                    if log_dict["f1/valid"] < best_early_stop:
-                        best_early_stop = log_dict["f1/valid"]
+                    if log_dict[args.eval_metric] < best_early_stop:
+                        best_early_stop = log_dict[args.eval_metric]
                         num_val_fails = 0
                         save_model_and_res(model, run_name, target_lst, pred_lst, targ_lst_valid, pred_lst_valid, epoch,
                                            args.k)

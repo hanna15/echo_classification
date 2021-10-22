@@ -26,7 +26,7 @@ def load_and_process_video(video_path):
 
 class EchoDataset(Dataset):
     def __init__(self, index_file_path, label_file_path, videos_dir=None, cache_dir=None,
-                 transform=None, scaling_factor=0.5, procs=3, visualise_frames=False):
+                 transform=None, scaling_factor=0.5, procs=3, visualise_frames=False, percentile=90):
         """
         Dataset for echocardiogram processing and classification in PyTorch.
         :param file_list_path: Path to a numpy file, listing all sample names to use in this dataset.
@@ -41,6 +41,7 @@ class EchoDataset(Dataset):
 
         self.frames = []
         self.targets = []
+        self.sample_names = []
         self.transform = transform
         self.videos_dir = videos_dir
         if cache_dir is None:
@@ -50,15 +51,17 @@ class EchoDataset(Dataset):
         self.label_path = label_file_path
         self.visualise_frames = visualise_frames
         self.scaling_factor = scaling_factor
+        self.max_percentile = percentile
 
         samples = np.load(index_file_path)
         t = time()
         with mp.Pool(processes=procs) as pool:
-            for frames, label in pool.map(self.load_sample, samples):
-                if frames is not None and label is not None:
-                    for frame in frames:  # each frame becomes an individual sample (with the same label)
+            for frames, label, sample_names in pool.map(self.load_sample, samples):
+                if frames is not None and label is not None and sample_names is not None:
+                    for frame, sample_name in zip(frames, sample_names):  # each frame becomes an individual sample (with the same label)
                         self.frames.append(frame)
                         self.targets.append(label)
+                        self.sample_names.append(sample_name)
         t = time() - t
         self.num_samples = len(self.frames)
         self.labels, cnts = np.unique(self.targets, return_counts=True)
@@ -84,14 +87,14 @@ class EchoDataset(Dataset):
             curr_video_path = os.path.join(self.cache_dir, str(sample) + 'KAPAP.npy')  # TODO: Generalise
         if not os.path.exists(curr_video_path):
             print(f'Skipping sample {sample}, as the video path {curr_video_path} does not exist')
-            return None, None
+            return None, None, None
         try:  # Try to get segmentations
             sample_w_ending = str(sample) + 'KAPAP'
             # Todo: have user pass in segmentation result directory themselves
             segm = SegmentationAnalyser(sample_w_ending, os.path.join('segmented_results', str(self.scaling_factor)))
         except:
             print(f'Skipping sample {sample}, as the segmented results for it does not exist')
-            return None, None
+            return None, None, None
 
         # === Get labels ===
         with open(self.label_path, 'rb') as label_file:
@@ -103,21 +106,23 @@ class EchoDataset(Dataset):
             segmented_video = load_and_process_video(curr_video_path)
         else:  # load already processed numpy video
             segmented_video = np.load(curr_video_path)
-        max_exp_frame_nrs = segm.extract_max_percentile_frames()
+        max_exp_frame_nrs = segm.extract_max_percentile_frames(percentile=self.max_percentile)
         max_exp_frames = segmented_video[max_exp_frame_nrs]
-        return max_exp_frames, label
+        sample_names = [str(sample) + '_' + str(fram_nr) for fram_nr in max_exp_frame_nrs]
+        return max_exp_frames, label, sample_names
 
     def __len__(self):
         return self.num_samples
 
     def __getitem__(self, idx):
-        frame = self.frames[idx]
         label = self.targets[idx]
+        sample_name = self.sample_names[idx]
+        frame = self.frames[idx]
         frame = self.transform(frame)
         if self.visualise_frames:
             plt.imshow(frame.squeeze(0), cmap='gray', title='before trans')
             plt.show()
-        sample = {'label': label, 'frames': frame}
+        sample = {'label': label, 'frame': frame, 'sample_name': sample_name}
         if self.visualise_frames:
             plt.imshow(frame.squeeze(0), cmap='Greys_r', title='after trans')
             plt.show()
