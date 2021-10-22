@@ -243,7 +243,7 @@ def evaluate(model, model_name, train_loader, valid_loader, data_len, valid_len,
         print(metric, ":", epoch_valid_metrics[metric])
 
 
-def save_model_and_res(model, run_name, target_lst, pred_lst, sample_names, val_target_lst, val_pred_lst,
+def save_model_and_res(model, run_name, target_lst, pred_lst, val_target_lst, val_pred_lst, sample_names,
                        val_sample_names, epoch=None, k=None):
     """
     Save the given model, as well as the outputs, targets & metrics
@@ -283,7 +283,7 @@ def save_model_and_res(model, run_name, target_lst, pred_lst, sample_names, val_
     np.save(os.path.join(res_dir, 'train_' + sample_file_names), sample_names)
     np.save(os.path.join(res_dir, 'val_' + targ_file_name), val_target_lst)
     np.save(os.path.join(res_dir, 'val_' + pred_file_name), val_pred_lst)
-    np.save(os.path.join(res_dir, 'val' + sample_file_names), val_sample_names)
+    np.save(os.path.join(res_dir, 'val_' + sample_file_names), val_sample_names)
 
 
 def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run_name, optimizer, weights=None,
@@ -297,7 +297,7 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
         criterion = nn.CrossEntropyLoss(weight=weights)  # if weights is None, no weighting is performed
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=args.decay_factor, patience=args.decay_patience,
                                                      min_lr=args.min_lr, cooldown=args.cooldown)
-    best_early_stop = float("inf")
+    best_early_stop = float("inf") if 'loss' in args.eval_metric else -1  # if loss metric, then minimize, else maximize
     num_val_fails = 0
     print("Start training on", data_len, "training samples, and", valid_len, "validation samples")
     for epoch in range(args.max_epochs):
@@ -366,12 +366,16 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
                     tb_writer.add_scalar(metric_key, log_dict[metric_key], step)
 
                 if args.early_stop:
-                    # Note, currently base early stopping and best model on f1 score of valid set (instead of loss !)
-                    if log_dict[args.eval_metric] < best_early_stop:
+                    if 'loss' in args.eval_metric:  # smaller value is better
+                        better_res = log_dict[args.eval_metric] < best_early_stop
+                    else:  # larger value is better
+                        better_res = log_dict[args.eval_metric] > best_early_stop
+
+                    if better_res:
                         best_early_stop = log_dict[args.eval_metric]
                         num_val_fails = 0
-                        save_model_and_res(model, run_name, target_lst, pred_lst, targ_lst_valid, pred_lst_valid, epoch,
-                                           args.k)
+                        save_model_and_res(model, run_name, target_lst, pred_lst, targ_lst_valid, pred_lst_valid,
+                                           epoch_samples, epoch_valid_samples, epoch=epoch, k=args.k)
                     else:
                         num_val_fails += 1
 
