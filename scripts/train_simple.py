@@ -243,15 +243,18 @@ def evaluate(model, model_name, train_loader, valid_loader, data_len, valid_len,
         print(metric, ":", epoch_valid_metrics[metric])
 
 
-def save_model_and_res(model, run_name, target_lst, pred_lst, val_target_lst, val_pred_lst, epoch=None, k=None):
+def save_model_and_res(model, run_name, target_lst, pred_lst, sample_names, val_target_lst, val_pred_lst,
+                       val_sample_names, epoch=None, k=None):
     """
     Save the given model, as well as the outputs, targets & metrics
     :param model: The model to save
     :param run_name: Descriptive name of this run / model
     :param target_lst: List of targets for training data
     :param pred_lst: List of predictions for training data
+    :param sample_names: List of sample names for training data (sample + frame nr)
     :param val_target_lst: List of targets for validation data
     :param val_pred_lst: List of predictions for validation data
+    :param val_sample_names: List of sample names for validation data (sample + frame nr)
     :param epoch: Current epoch for the given model
     :param k: If cross-validation is being used, this is the current fold
     """
@@ -272,12 +275,15 @@ def save_model_and_res(model, run_name, target_lst, pred_lst, val_target_lst, va
     model_file_name = base_name + '.pt'
     targ_file_name = 'targets_' + base_name + '.npy'
     pred_file_name = 'preds_' + base_name + '.npy'
+    sample_file_names = 'samples_' + base_name + '.npy'
 
     torch.save(model.state_dict(), os.path.join(model_dir, model_file_name))
     np.save(os.path.join(res_dir, 'train_' + targ_file_name), target_lst)
     np.save(os.path.join(res_dir, 'train_' + pred_file_name), pred_lst)
+    np.save(os.path.join(res_dir, 'train_' + sample_file_names), sample_names)
     np.save(os.path.join(res_dir, 'val_' + targ_file_name), val_target_lst)
     np.save(os.path.join(res_dir, 'val_' + pred_file_name), val_pred_lst)
+    np.save(os.path.join(res_dir, 'val' + sample_file_names), val_sample_names)
 
 
 def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run_name, optimizer, weights=None,
