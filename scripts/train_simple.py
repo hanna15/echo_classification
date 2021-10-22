@@ -341,7 +341,6 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
             pred_lst_valid = [t.item() for t in epoch_valid_preds]
             epoch_metrics = get_metrics(pred_lst, target_lst, prefix='train', binary=binary)
             epoch_valid_metrics = get_metrics(pred_lst_valid, targ_lst_valid, prefix='valid', binary=binary)
-            print("valid sample names", epoch_valid_samples)
             print('*** epoch:', epoch, '***')
             print('train_loss:', epoch_loss / data_len)
             print('valid loss:', epoch_valid_loss / valid_len)
