@@ -49,7 +49,7 @@ parser.add_argument('--run_id', type=str, default='',
 parser.add_argument('--scaling_factor', default=0.25, help='How much to scale (down) the videos, as a ratio of original '
                                                           'size. Also determines the cache sub-folder')
 parser.add_argument('--num_workers', type=int, default=4, help='The number of workers for loading data')
-parser.add_argument('--max_p', type=int, default=90, help='Percentile for max expansion frames')
+parser.add_argument('--max_p', type=float, default=90, help='Percentile for max expansion frames')
 parser.add_argument('--augment', action='store_true',
                     help='set this flag to apply ALL augmentation transformations to training data')
 parser.add_argument('--noise', action='store_true',
