@@ -119,12 +119,16 @@ def get_run_name():
         run_id = ''
     else:
         run_id = args.run_id + '_'
+    if args.k is None:
+        k = ''
+    else:
+        k = '.k' + str(args.fold)
     if args.fold is None:
         fold = ''
     else:
-        fold = '.k' + str(args.fold)
+        fold = '.f' + str(args.fold)
     run_name = run_id + args.model + '_' + args.optimizer + '_lt_' + long_label_type_to_short[args.label_type]\
-               + fold + '.lr_' + str(args.lr) + '.batch_' + str(args.batch_size)
+               + k + fold + '.lr_' + str(args.lr) + '.batch_' + str(args.batch_size)
     if args.decay_factor > 0.0:
         run_name += str(args.decay_factor)  # only add to description if not default
     if args.decay_patience < 1000:
@@ -438,7 +442,7 @@ def main():
 
     binary = True if args.label_type.startswith('2class') else False
     label_path = os.path.join('label_files', 'labels_' + args.label_type + '.pkl')
-    idx_dir = 'index_files' if args.k is None else os.path.join('k', str(args.k))
+    idx_dir = 'index_files' if args.k is None else os.path.join('index_files', 'k' + str(args.k))
     idx_file_end = '' if args.fold is None else '_' + str(args.fold)
     train_index_file_path = os.path.join(idx_dir, 'train_samples_' + args.label_type + idx_file_end + '.npy')
     valid_index_file_path = os.path.join(idx_dir, 'valid_samples_' + args.label_type + idx_file_end + '.npy')
