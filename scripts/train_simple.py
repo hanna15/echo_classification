@@ -281,12 +281,19 @@ def save_model_and_res(model, run_name, target_lst, pred_lst, val_target_lst, va
 
     os.makedirs(res_dir, exist_ok=True)  # create sub-directory for this base model name
 
+
     model_file_name = base_name + '.pt'
     targ_file_name = 'targets_' + base_name + '.npy'
     pred_file_name = 'preds_' + base_name + '.npy'
     sample_file_names = 'samples_' + base_name + '.npy'
 
+    # Just before saving the model, delete older versions of the model, to save space
+    for model_file in os.path.join(model_dir):
+        # same model but different epoch
+        if model_file.split('_e')[0] == model_file_name.split('_e')[0]:
+            os.system(f'rm {os.path.join(model_dir, model_file)}')
     torch.save(model.state_dict(), os.path.join(model_dir, model_file_name))
+
     np.save(os.path.join(res_dir, 'train_' + targ_file_name), target_lst)
     np.save(os.path.join(res_dir, 'train_' + pred_file_name), pred_lst)
     np.save(os.path.join(res_dir, 'train_' + sample_file_names), sample_names)
