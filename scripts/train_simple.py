@@ -122,7 +122,7 @@ def get_run_name():
     if args.k is None:
         k = ''
     else:
-        k = '.k' + str(args.fold)
+        k = '.k' + str(args.k)
     if args.fold is None:
         fold = ''
     else:
