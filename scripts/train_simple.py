@@ -35,9 +35,11 @@ parser.add_argument('--cache_dir', default=None,
 parser.add_argument('--label_type', default='2class', choices=['2class', '2class_drop_ambiguous', '3class'],
                     help='How many classes for the labels, and in some cases also variations of dropping ambiguous '
                          'labels. Will be used to fetch the correct label file and train and valid index files')
-parser.add_argument('--k', default=None, type=int,
-                    help='In case of k-fold cross-validation, set the current k (fold) for this training.'
+parser.add_argument('--fold', default=None, type=int,
+                    help='In case of k-fold cross-validation, set the current fold for this training.'
                          'Will be used to fetch the relevant k-th train and valid index file')
+parser.add_argument('--k', default=None, type=int,
+                    help='In case of k-fold cross-validation, set the k, i.e. how many folds all in all.')
 parser.add_argument('--model_name', type=str, default=None,
                     help='Set the name of the model you want to load or train. If None, use the model name as assigned'
                          'by the function get_run_name(), using selected arguments, and optionally unique_run_id')
@@ -116,12 +118,12 @@ def get_run_name():
         run_id = ''
     else:
         run_id = args.run_id + '_'
-    if args.k is None:
-        k = ''
+    if args.fold is None:
+        fold = ''
     else:
-        k = '.k' + str(args.k)
+        fold = '.k' + str(args.fold)
     run_name = run_id + args.model + '_' + args.optimizer + '_lt_' + long_label_type_to_short[args.label_type]\
-               + k + '.lr_' + str(args.lr) + '.batch_' + str(args.batch_size)
+               + fold + '.lr_' + str(args.lr) + '.batch_' + str(args.batch_size)
     if args.decay_factor > 0.0:
         run_name += str(args.decay_factor)  # only add to description if not default
     if args.decay_patience < 1000:
@@ -246,7 +248,7 @@ def evaluate(model, model_name, train_loader, valid_loader, data_len, valid_len,
 
 
 def save_model_and_res(model, run_name, target_lst, pred_lst, val_target_lst, val_pred_lst, sample_names,
-                       val_sample_names, epoch=None, k=None):
+                       val_sample_names, epoch=None, fold=None):
     """
     Save the given model, as well as the outputs, targets & metrics
     :param model: The model to save
@@ -258,19 +260,19 @@ def save_model_and_res(model, run_name, target_lst, pred_lst, val_target_lst, va
     :param val_pred_lst: List of predictions for validation data
     :param val_sample_names: List of sample names for validation data (sample + frame nr)
     :param epoch: Current epoch for the given model
-    :param k: If cross-validation is being used, this is the current fold
+    :param fold: If cross-validation is being used, this is the current fold
     """
     if epoch is None:
         base_name = run_name + '_final'
     else:  # Append epoch name to the model name
         base_name = run_name + '_e' + str(epoch)
 
-    if k is None:  # If not k-fold cross validation, save results in base dirs
+    if fold is None:  # If not k-fold cross validation, save results in base dirs
         res_dir = os.path.join(BASE_RES_DIR, base_name)
         model_dir = BASE_MODEL_DIR
     else:
-        res_dir = os.path.join(BASE_RES_DIR, 'fold' + str(k), base_name)
-        model_dir = os.path.join(BASE_MODEL_DIR, 'fold' + str(k))
+        res_dir = os.path.join(BASE_RES_DIR, 'fold' + str(fold), base_name)
+        model_dir = os.path.join(BASE_MODEL_DIR, 'fold' + str(fold))
 
     os.makedirs(res_dir, exist_ok=True)  # create sub-directory for this base model name
 
@@ -377,7 +379,7 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
                         best_early_stop = log_dict[args.eval_metric]
                         num_val_fails = 0
                         save_model_and_res(model, run_name, target_lst, pred_lst, targ_lst_valid, pred_lst_valid,
-                                           epoch_samples, epoch_valid_samples, epoch=epoch, k=args.k)
+                                           epoch_samples, epoch_valid_samples, epoch=epoch, fold=args.fold)
                     else:
                         num_val_fails += 1
 
@@ -428,9 +430,10 @@ def main():
 
     binary = True if args.label_type.startswith('2class') else False
     label_path = os.path.join('label_files', 'labels_' + args.label_type + '.pkl')
-    idx_file_end = '' if args.k is None else '_' + str(args.k)
-    train_index_file_path = os.path.join('index_files', 'train_samples_' + args.label_type + idx_file_end + '.npy')
-    valid_index_file_path = os.path.join('index_files', 'valid_samples_' + args.label_type + idx_file_end + '.npy')
+    idx_dir = 'index_files' if args.k is None else os.path.join('k', str(args.k))
+    idx_file_end = '' if args.fold is None else '_' + str(args.fold)
+    train_index_file_path = os.path.join(idx_dir, 'train_samples_' + args.label_type + idx_file_end + '.npy')
+    valid_index_file_path = os.path.join(idx_dir, 'valid_samples_' + args.label_type + idx_file_end + '.npy')
 
     # Data & Transforms
     if args.augment and not args.load_model:  # All augmentations
