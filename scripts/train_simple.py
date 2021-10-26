@@ -1,4 +1,5 @@
 import numpy as np
+import random
 import torch
 import os
 import math
@@ -414,6 +415,13 @@ def get_resnet(num_classes=3):
 
 def main():
     torch.manual_seed(TORCH_SEED)  # Fix a seed, to increase reproducibility
+    torch.cuda.manual_seed(TORCH_SEED)
+    torch.cuda.manual_seed_all(TORCH_SEED)
+    np.random.seed(TORCH_SEED)
+    random.seed(TORCH_SEED)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Will be training on device', device)
     run_name = get_run_name()
