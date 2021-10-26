@@ -103,7 +103,7 @@ parser.add_argument('--log_freq', type=int, default=2,
 parser.add_argument('--tb_dir', type=str, default='tb_runs_cv',
                     help='Tensorboard directory - where tensorboard logs are stored.')
 
-MAX_NO_FOLDS = 5
+MAX_NO_FOLDS = 20
 BASE_RES_DIR = 'results'
 BASE_MODEL_DIR = 'models'
 TORCH_SEED = 0
