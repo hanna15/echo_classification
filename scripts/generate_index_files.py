@@ -23,7 +23,7 @@ parser.add_argument('--valid_ratio', type=float, default=0.2,
                     help='Ratio of total data used for validation')
 parser.add_argument('--video_cache_dir', type=str, default='~/.heart_echo',
                     help='Path of the video cache dir (usually: ~/.heart_echo).')
-parser.add_argument('--scale_factor', default=0.5,
+parser.add_argument('--scale_factor', default=0.25,
                     help='Scaling factor of the cached videos')
 parser.add_argument('--out_dir', default='index_files',
                     help='Path to directory where results should be stored')
