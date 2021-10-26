@@ -111,6 +111,7 @@ def main():
             file_ending = '' if args.no_folds is None else '_' + str(fold)
             out_dir = args.out_dir if args.no_folds is None else os.path.join(args.out_dir, 'k' + str(args.no_folds))
             np.save(os.path.join(out_dir, 'train_samples_' + file_name + file_ending + '.npy'), samples_train)
+            os.makedirs(args.out_dir, exist_ok=True)
             os.makedirs(out_dir, exist_ok=True)
             np.save(os.path.join(out_dir, 'valid_samples_' + file_name + file_ending + '.npy'), samples_test)
 
