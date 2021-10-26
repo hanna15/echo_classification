@@ -110,8 +110,10 @@ def main():
             os.makedirs(args.out_dir, exist_ok=True)
             file_name = label_file.split('labels_')[1][:-4]
             file_ending = '' if args.no_folds is None else '_' + str(k)
-            np.save(os.path.join(args.out_dir, 'train_samples_' + file_name + file_ending + '.npy'), samples_train)
-            np.save(os.path.join(args.out_dir, 'valid_samples_' + file_name + file_ending + '.npy'), samples_test)
+            np.save(os.path.join(args.out_dir, 'k' + str(args.no_folds),
+                                 'train_samples_' + file_name + file_ending + '.npy'), samples_train)
+            np.save(os.path.join(args.out_dir, 'k' + str(args.no_folds),
+                                 'valid_samples_' + file_name + file_ending + '.npy'), samples_test)
 
             # Print results
             print_res(y_train, y_test)
