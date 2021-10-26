@@ -88,7 +88,7 @@ def main():
 
     no_splits = 1 if args.no_folds is None else args.no_folds
     for label_dict, label_file in zip(label_dicts, label_files):
-        for k in range(no_splits):
+        for fold in range(no_splits):
             print("\nResults for", label_file)
             labels_in_use = []
             video_ids_in_use = []
@@ -105,15 +105,14 @@ def main():
             samples_train, samples_test, y_train, y_test = train_test_split(np.asarray(video_ids_in_use), labels_in_use,
                                                                             test_size=args.valid_ratio,
                                                                             shuffle=True, stratify=labels_in_use,
-                                                                            random_state=k)  # seed is the fold id (k)
+                                                                            random_state=fold)  # seed is the fold id
             # Save index files for train and test
             os.makedirs(args.out_dir, exist_ok=True)
             file_name = label_file.split('labels_')[1][:-4]
-            file_ending = '' if args.no_folds is None else '_' + str(k)
-            np.save(os.path.join(args.out_dir, 'k' + str(args.no_folds),
-                                 'train_samples_' + file_name + file_ending + '.npy'), samples_train)
-            np.save(os.path.join(args.out_dir, 'k' + str(args.no_folds),
-                                 'valid_samples_' + file_name + file_ending + '.npy'), samples_test)
+            file_ending = '' if args.no_folds is None else '_' + str(fold)
+            out_dir = args.out_dir if args.no_folds is None else os.path.join(args.out_dir, 'k' + str(args.no_folds))
+            np.save(os.path.join(out_dir, 'train_samples_' + file_name + file_ending + '.npy'), samples_train)
+            np.save(os.path.join(out_dir, 'valid_samples_' + file_name + file_ending + '.npy'), samples_test)
 
             # Print results
             print_res(y_train, y_test)
