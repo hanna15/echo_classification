@@ -501,18 +501,20 @@ def main():
     valid_index_file_path = os.path.join(idx_dir, 'valid_samples_' + args.label_type + idx_file_end + '.npy')
 
     # Data & Transforms
-    if args.augment and not args.load_model:  # All augmentations
-        train_transforms = get_augment_transforms(hist_eq=args.hist_eq)  # all other default true
-    else:
-        individual_augments = [args.hist_eq, args.noise, args.intensity, args.rand_resize, args.rotate, args.translate]
-        if any(individual_augments):  # Only some specific augmentations
-            train_transforms = get_augment_transforms(individual_augments)
-        else:  # No augmentation
-            train_transforms = get_base_transforms(hist_eq=args.hist_eq)
+    # if args.augment and not args.load_model:  # All augmentations
+    #     train_transforms = get_augment_transforms(hist_eq=args.hist_eq)  # all other default true
+    # else:
+    #     individual_augments = [args.hist_eq, args.noise, args.intensity, args.rand_resize, args.rotate, args.translate]
+    #     if any(individual_augments):  # Only some specific augmentations
+    #         train_transforms = get_augment_transforms(individual_augments)
+    #     else:  # No augmentation
+    #         train_transforms = get_base_transforms(hist_eq=args.hist_eq)
 
-    train_transforms = get_transforms(train_index_file_path,
-                                      dataset_orig_img_scale=0.5, resize=224, augment=True)
-    valid_transforms = get_base_transforms(hist_eq=args.hist_eq)
+    train_transforms = get_transforms(train_index_file_path, dataset_orig_img_scale=args.scaling_factor, resize=224,
+                                      augment=True)
+    valid_transforms = get_transforms(valid_index_file_path, dataset_orig_img_scale=args.scaling_factor, resize=224,
+                                      augment=False)
+    #valid_transforms = get_base_transforms(hist_eq=args.hist_eq)
 
     train_dataset = EchoDataset(train_index_file_path, label_path, videos_dir=args.videos_dir,
                                 cache_dir=args.cache_dir,
