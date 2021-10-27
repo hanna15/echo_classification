@@ -15,6 +15,7 @@ from echo_ph.models.conv_nets import ConvNet, SimpleConvNet
 from echo_ph.models.my_resnet import resnet_simpler
 from echo_ph.data.ph_labels import long_label_type_to_short
 from utils.transforms import get_augment_transforms, get_base_transforms
+from utils.transforms2 import get_transforms
 from sklearn.metrics import f1_score, accuracy_score, balanced_accuracy_score, roc_auc_score
 import warnings
 
@@ -94,7 +95,7 @@ parser.add_argument('--early_stop', type=int, default=100,
 parser.add_argument('--pretrained', action='store_true', help='Set this flag to use pre-trained resnet')
 parser.add_argument('--eval_metrics', type=str, default=['f1/valid', 'b-accuracy/valid'], nargs='+',
                     help='Set this the metric you want to use for early stopping - you can choose multiple metrics. '
-                         'Choices: f1/valid, loss/valid, b-accuracy/valid, f1/train, loss/train, b-accuracy/train')
+                         'Choices: f1/valid, loss/valid, b-accuracy/valid, video-f1/valid, video-b-accuracy/valid')
 
 # General parameters
 parser.add_argument('--debug', action='store_true', help='set this flag when debugging, to not connect to wandb, etc')
@@ -161,7 +162,7 @@ def get_run_name():
     return run_name
 
 
-def get_metrics(outputs, targets, prefix='', binary=False):
+def get_metrics(outputs, targets, samples, prefix='', binary=False):
     """
     Get metrics per batch
     :param outputs: Model outputs (before max) OR model predictions (after max) - as a tensor OR list
@@ -182,10 +183,35 @@ def get_metrics(outputs, targets, prefix='', binary=False):
         avg = 'binary'
     else:
         avg = 'micro'  # For imbalanced multi-class, micro is better than macro
+
+    res_per_video = {}
+    for t, p, s in zip(targets, preds, samples):
+        vid_id = s.split('_')[0]
+        if vid_id in res_per_video:
+            res_per_video[vid_id][1].append(p)
+        else:
+            res_per_video[vid_id] = (t, [])  # first is the target, second is list of preds
+    targets_per_video = []
+    preds_per_video = []
+    for res in res_per_video.values():
+        percentate_pred_1 = np.sum(res[1])/len(res[1])
+        pred = 1 if percentate_pred_1 >= 0.5 else 0  # Change to a single pred value per video
+        preds_per_video.append(pred)
+        targets_per_video.append(res[0])
+
+    video_f1 = f1_score(targets_per_video, preds_per_video, average=avg)
+    video_acc = balanced_accuracy_score(targets_per_video, preds_per_video)
+    video_b_acc = accuracy_score(targets_per_video, preds_per_video)
+    video_roc_auc = roc_auc_score(targets_per_video, preds_per_video)
+
     metrics = {'f1' + '/' + prefix: f1_score(targets, preds, average=avg),
                'accuracy' + '/' + prefix: accuracy_score(targets, preds),
                'b-accuracy' + '/' + prefix: balanced_accuracy_score(targets, preds),
-               'roc_auc' + '/' + prefix: roc_auc_score(targets, preds)
+               'roc_auc' + '/' + prefix: roc_auc_score(targets, preds),
+               'video-f1' + '/' + prefix: video_f1,
+               'video-accuracy' + '/ ' + prefix: video_acc,
+               'video-b-accuracy' + '/ ' + prefix: video_b_acc,
+               'video-roc_auc' + '/ ' + prefix: video_roc_auc
                }
     return metrics
 
@@ -362,8 +388,8 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
             pred_lst = [t.item() for t in epoch_preds]
             targ_lst_valid = [t.item() for t in epoch_valid_targets]
             pred_lst_valid = [t.item() for t in epoch_valid_preds]
-            epoch_metrics = get_metrics(pred_lst, target_lst, prefix='train', binary=binary)
-            epoch_valid_metrics = get_metrics(pred_lst_valid, targ_lst_valid, prefix='valid', binary=binary)
+            epoch_metrics = get_metrics(pred_lst, target_lst, epoch_samples, prefix='train', binary=binary)
+            epoch_valid_metrics = get_metrics(pred_lst_valid, targ_lst_valid, epoch_valid_samples, prefix='valid', binary=binary)
             print('*** epoch:', epoch, '***')
             print('train_loss:', epoch_loss / data_len)
             print('valid loss:', epoch_valid_loss / valid_len)
@@ -483,6 +509,9 @@ def main():
             train_transforms = get_augment_transforms(individual_augments)
         else:  # No augmentation
             train_transforms = get_base_transforms(hist_eq=args.hist_eq)
+
+    train_transforms = get_transforms(train_index_file_path,
+                                      dataset_orig_img_scale=0.5, resize=224, augment=True)
     valid_transforms = get_base_transforms(hist_eq=args.hist_eq)
 
     train_dataset = EchoDataset(train_index_file_path, label_path, videos_dir=args.videos_dir,
