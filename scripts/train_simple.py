@@ -93,7 +93,7 @@ parser.add_argument('--early_stop', type=int, default=100,
                     help='Patience (in no. epochs) for early stopping due to no improvement of valid f1 score')
 parser.add_argument('--pretrained', action='store_true', help='Set this flag to use pre-trained resnet')
 parser.add_argument('--eval_metrics', type=str, default=['f1/valid', 'b-accuracy/valid'], nargs='+',
-                    help='Set this the metric you want to use for early stopping. '
+                    help='Set this the metric you want to use for early stopping - you can choose multiple metrics. '
                          'Choices: f1/valid, loss/valid, b-accuracy/valid, f1/train, loss/train, b-accuracy/train')
 
 # General parameters
@@ -288,14 +288,15 @@ def save_model_and_res(model, run_name, target_lst, pred_lst, val_target_lst, va
     sample_file_names = 'samples_' + base_name + '.npy'
 
     # Just before saving the model, delete older versions of the model and results, to save space
-    for model_file in os.path.join(model_dir):
+    for model_file in os.listdir(model_dir):
         # same model but different epoch
         if model_file.split('_e')[0] == model_file_name.split('_e')[0]:
             os.system(f'rm -r {os.path.join(model_dir, model_file)}')
             res_dir_to_del = os.path.join(BASE_RES_DIR, "fold" + str(fold), model_file[:-3])
-            os.system(f'rm -r {res_dir_to_del}')
+            if os.path.exists(res_dir_to_del):
+                os.system(f'rm -r {res_dir_to_del}')
     torch.save(model.state_dict(), os.path.join(model_dir, model_file_name))
-
+    os.makedirs(res_dir, exist_ok=True)  # create sub-directory for this base model name
     np.save(os.path.join(res_dir, 'train_' + targ_file_name), target_lst)
     np.save(os.path.join(res_dir, 'train_' + pred_file_name), pred_lst)
     np.save(os.path.join(res_dir, 'train_' + sample_file_names), sample_names)
