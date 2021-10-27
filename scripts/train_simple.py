@@ -511,10 +511,10 @@ def main():
     #         train_transforms = get_base_transforms(hist_eq=args.hist_eq)
 
     train_transforms = get_transforms(train_index_file_path, dataset_orig_img_scale=args.scaling_factor, resize=224,
-                                      augment=True)
+                                      augment=True, fold=args.fold, valid=False)
     valid_transforms = get_transforms(valid_index_file_path, dataset_orig_img_scale=args.scaling_factor, resize=224,
-                                      augment=False)
-    #valid_transforms = get_base_transforms(hist_eq=args.hist_eq)
+                                      augment=False, fold=args.fold, valid=True)
+    # valid_transforms = get_base_transforms(hist_eq=args.hist_eq)
 
     train_dataset = EchoDataset(train_index_file_path, label_path, videos_dir=args.videos_dir,
                                 cache_dir=args.cache_dir,

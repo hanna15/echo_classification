@@ -345,17 +345,21 @@ class Augment():
     brightness adjustment, Gamma Correction, blurring and sharpening the image
     """
 
-    def __init__(self, index_file_path, orig_img_scale=0.5, size=-1, return_pid=False):
+    def __init__(self, index_file_path, orig_img_scale=0.5, size=-1, return_pid=False, fold=0, valid=False):
         self.return_pid = return_pid
         # Generate precomputation libraries for masks and corners
-        self.mask_path = os.path.expanduser(os.path.join('~', '.echo-net', 'masks'))
+        if valid:
+            subset = 'valid'
+        else:
+            subset = 'train'
+        self.mask_path = os.path.expanduser(os.path.join('~', '.echo-net', 'masks', subset))
         Path(self.mask_path).mkdir(parents=True, exist_ok=True)
 
         # Get masks and corners
         self.orig_img_scale = orig_img_scale
         self.index_file_path = index_file_path
         self.size = size
-        self.masks = self._get_masks()
+        self.masks = self._get_masks(fold)
 
         # Define augmentation transforms
         self.intensity_transformations = [
@@ -370,9 +374,9 @@ class Augment():
             RandomResize(),
         ]
 
-    def _get_masks(self):
+    def _get_masks(self, fold):
         print('in _get_masks')
-        mask_fn = os.path.join(self.mask_path, f'{self.size}_{int(100 * self.orig_img_scale)}_percent.pt')
+        mask_fn = os.path.join(self.mask_path, f'{self.size}_{int(100 * self.orig_img_scale)}_percent_fold{fold}.pt')
         print(mask_fn)
         if not os.path.exists(mask_fn):
             # utilities.generate_masks(self.size, self.orig_img_scale)
@@ -627,6 +631,8 @@ class Resize():
 
 def get_transforms(
         index_file_path,
+        fold=0,
+        valid=False,
         resize=256,
         crop_to_corner=False,
         shape_equalization=False,
@@ -655,8 +661,9 @@ def get_transforms(
             ShapeEqualization(resize, orig_img_scale=dataset_orig_img_scale) if shape_equalization else Identity(),
             #             GaussianSmoothing(),
             Resize(resize, return_pid=(with_pid or augment)) if not shape_equalization else Identity(),
-            Augment(index_file_path, orig_img_scale=dataset_orig_img_scale, size=resize, return_pid=with_pid) if augment
-                else Identity(),
+            Augment(index_file_path, orig_img_scale=dataset_orig_img_scale, size=resize, return_pid=with_pid, fold=fold,
+                    valid=valid)
+            if augment else Identity(),
             RandomNoise() if noise else Identity(),
             RandomMask(resize=resize,
                        orig_img_scale=dataset_orig_img_scale) if mask and not shape_equalization else Identity(),
@@ -666,11 +673,11 @@ def get_transforms(
     )
 
 
-def gen_masks(resize, orig_scale_fac, index_file_path, heart_mask=False):
+def gen_masks(resize, orig_scale_fac, index_file_path, fold=0):
     print('in get_masks')
     mask_path = os.path.expanduser(os.path.join('~', '.echo-net', 'masks'))
     mask_fn = os.path.join(mask_path,
-                           f'{resize}_{int(100 * orig_scale_fac)}_percent{"" if not heart_mask else f"_heart_mask"}.pt')
+                           f'{resize}_{int(100 * orig_scale_fac)}_percent_fold{fold}.pt')
     # Get a mask for each patient
     print("Assembling echo masks.")
     masks = {}
