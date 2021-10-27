@@ -380,7 +380,7 @@ class Augment():
         print(mask_fn)
         if not os.path.exists(mask_fn):
             # utilities.generate_masks(self.size, self.orig_img_scale)
-            gen_masks(self.size, self.orig_img_scale, self.index_file_path)
+            gen_masks(self.mask_path, self.size, self.orig_img_scale, self.index_file_path)
         return torch.load(mask_fn)
 
     def _apply_background_noise(self, sample, mask):
@@ -673,9 +673,9 @@ def get_transforms(
     )
 
 
-def gen_masks(resize, orig_scale_fac, index_file_path, fold=0):
+def gen_masks(mask_path, resize, orig_scale_fac, index_file_path, fold=0):
     print('in get_masks')
-    mask_path = os.path.expanduser(os.path.join('~', '.echo-net', 'masks'))
+    # mask_path = os.path.expanduser(os.path.join('~', '.echo-net', 'masks'))
     mask_fn = os.path.join(mask_path,
                            f'{resize}_{int(100 * orig_scale_fac)}_percent_fold{fold}.pt')
     # Get a mask for each patient
