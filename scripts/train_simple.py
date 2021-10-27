@@ -92,8 +92,9 @@ parser.add_argument('--cooldown', type=float, default=0, help='cool-down for red
 parser.add_argument('--early_stop', type=int, default=100,
                     help='Patience (in no. epochs) for early stopping due to no improvement of valid f1 score')
 parser.add_argument('--pretrained', action='store_true', help='Set this flag to use pre-trained resnet')
-parser.add_argument('--eval_metric', default='f1/valid', choices=['f1/valid', 'loss/valid', 'f1/train', 'loss/train'],
-                    help='Set this the metric you want to use for early stopping')
+parser.add_argument('--eval_metrics', type=str, default=['f1/valid', 'b-accuracy/valid'], nargs='+',
+                    help='Set this the metric you want to use for early stopping. '
+                         'Choices: f1/valid, loss/valid, b-accuracy/valid, f1/train, loss/train, b-accuracy/train')
 
 # General parameters
 parser.add_argument('--debug', action='store_true', help='set this flag when debugging, to not connect to wandb, etc')
@@ -281,17 +282,18 @@ def save_model_and_res(model, run_name, target_lst, pred_lst, val_target_lst, va
 
     os.makedirs(res_dir, exist_ok=True)  # create sub-directory for this base model name
 
-
     model_file_name = base_name + '.pt'
     targ_file_name = 'targets_' + base_name + '.npy'
     pred_file_name = 'preds_' + base_name + '.npy'
     sample_file_names = 'samples_' + base_name + '.npy'
 
-    # Just before saving the model, delete older versions of the model, to save space
+    # Just before saving the model, delete older versions of the model and results, to save space
     for model_file in os.path.join(model_dir):
         # same model but different epoch
         if model_file.split('_e')[0] == model_file_name.split('_e')[0]:
-            os.system(f'rm {os.path.join(model_dir, model_file)}')
+            os.system(f'rm -r {os.path.join(model_dir, model_file)}')
+            res_dir_to_del = os.path.join(BASE_RES_DIR, "fold" + str(fold), model_file[:-3])
+            os.system(f'rm -r {res_dir_to_del}')
     torch.save(model.state_dict(), os.path.join(model_dir, model_file_name))
 
     np.save(os.path.join(res_dir, 'train_' + targ_file_name), target_lst)
@@ -313,7 +315,11 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
         criterion = nn.CrossEntropyLoss(weight=weights)  # if weights is None, no weighting is performed
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=args.decay_factor, patience=args.decay_patience,
                                                      min_lr=args.min_lr, cooldown=args.cooldown)
-    best_early_stop = float("inf") if 'loss' in args.eval_metric else -1  # if loss metric, then minimize, else maximize
+    best_early_stops = []
+    for eval_metric in args.eval_metrics:
+        best = float("inf") if 'loss' in eval_metric else -1  # if loss metric, then minimize, else maximize
+        best_early_stops.append(best)
+
     num_val_fails = 0
     print("Start training on", data_len, "training samples, and", valid_len, "validation samples")
     for epoch in range(args.max_epochs):
@@ -382,23 +388,30 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
                     tb_writer.add_scalar(metric_key, log_dict[metric_key], step)
 
                 if args.early_stop:
-                    if 'loss' in args.eval_metric:  # smaller value is better
-                        better_res = log_dict[args.eval_metric] < best_early_stop
-                    else:  # larger value is better
-                        better_res = log_dict[args.eval_metric] > best_early_stop
+                    i = 0
+                    saved_model_this_round = False
+                    # If any of eval metrics improve => save model and reset early stop counter
+                    for best_early_stop, eval_metric in zip(best_early_stops, args.eval_metrics):
+                        if 'loss' in eval_metric:  # smaller value is better
+                            better_res = log_dict[eval_metric] < best_early_stop
+                        else:  # larger value is better
+                            better_res = log_dict[eval_metric] > best_early_stop
 
-                    if better_res:
-                        best_early_stop = log_dict[args.eval_metric]
-                        num_val_fails = 0
-                        save_model_and_res(model, run_name, target_lst, pred_lst, targ_lst_valid, pred_lst_valid,
-                                           epoch_samples, epoch_valid_samples, epoch=epoch, fold=args.fold)
-                    else:
-                        num_val_fails += 1
-
-                    if num_val_fails >= args.early_stop:
-                        print('== Early stop training after', num_val_fails,
-                              'epochs without validation loss improvement')
-                        break
+                        if better_res:
+                            best_early_stops[i] = log_dict[eval_metric]  # update
+                            num_val_fails = 0
+                            if not saved_model_this_round:
+                                save_model_and_res(model, run_name, target_lst, pred_lst, targ_lst_valid,
+                                                   pred_lst_valid, epoch_samples, epoch_valid_samples,
+                                                   epoch=epoch, fold=args.fold)
+                            saved_model_this_round = True
+                        else:
+                            num_val_fails += 1
+                        i += 1
+                        if num_val_fails >= args.early_stop:
+                            print('== Early stop training after', num_val_fails,
+                                  'epochs without validation loss improvement')
+                            break
             else:
                 target_lst = [t.item() for t in epoch_targets]
                 vals, cnts = np.unique(target_lst, return_counts=True)
@@ -432,6 +445,7 @@ def main():
     random.seed(TORCH_SEED)
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.enabled = False
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Will be training on device', device)
