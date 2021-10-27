@@ -209,9 +209,9 @@ def get_metrics(outputs, targets, samples, prefix='', binary=False):
                'b-accuracy' + '/' + prefix: balanced_accuracy_score(targets, preds),
                'roc_auc' + '/' + prefix: roc_auc_score(targets, preds),
                'video-f1' + '/' + prefix: video_f1,
-               'video-accuracy' + '/ ' + prefix: video_acc,
-               'video-b-accuracy' + '/ ' + prefix: video_b_acc,
-               'video-roc_auc' + '/ ' + prefix: video_roc_auc
+               'video-accuracy' + '/' + prefix: video_acc,
+               'video-b-accuracy' + '/' + prefix: video_b_acc,
+               'video-roc_auc' + '/' + prefix: video_roc_auc
                }
     return metrics
 
