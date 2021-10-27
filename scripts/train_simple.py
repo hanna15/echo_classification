@@ -391,6 +391,7 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
                 if args.early_stop:
                     i = 0
                     saved_model_this_round = False
+                    num_fails_this_round = 0
                     # If any of eval metrics improve => save model and reset early stop counter
                     for best_early_stop, eval_metric in zip(best_early_stops, args.eval_metrics):
                         if 'loss' in eval_metric:  # smaller value is better
@@ -407,12 +408,16 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
                                                    epoch=epoch, fold=args.fold)
                             saved_model_this_round = True
                         else:
-                            num_val_fails += 1
+                            num_fails_this_round += 1
                         i += 1
-                        if num_val_fails >= args.early_stop:
-                            print('== Early stop training after', num_val_fails,
-                                  'epochs without validation loss improvement')
-                            break
+
+                    if num_fails_this_round == len(args.eval_metrics):  # If no eval metric improved
+                        num_val_fails += 1
+
+                    if num_val_fails >= args.early_stop:
+                        print('== Early stop training after', num_val_fails,
+                              'epochs without validation loss improvement')
+                        break
             else:
                 target_lst = [t.item() for t in epoch_targets]
                 vals, cnts = np.unique(target_lst, return_counts=True)
