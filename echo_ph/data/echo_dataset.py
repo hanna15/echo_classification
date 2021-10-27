@@ -29,7 +29,7 @@ class EchoDataset(Dataset):
                  transform=None, scaling_factor=0.5, procs=3, visualise_frames=False, percentile=90):
         """
         Dataset for echocardiogram processing and classification in PyTorch.
-        :param file_list_path: Path to a numpy file, listing all sample names to use in this dataset.
+        :param index_file_path: Path to a numpy file, listing all sample names to use in this dataset.
         :param label_file_path: Path to pickle file, containing a dictionary of labels per sample name.
         :param videos_dir: Path to folder holding raw videos, if raw videos should be loaded. Else, None.
         :param cache_dir: Path to the folder holding the processed, cached videos, if those should be used. Else, None.
@@ -118,12 +118,18 @@ class EchoDataset(Dataset):
         label = self.targets[idx]
         sample_name = self.sample_names[idx]
         frame = self.frames[idx]
-        frame = self.transform(frame)
+
+        # if self.visualise_frames:
+        #     plt.imshow(frame.squeeze(0), cmap='gray', title='before trans')
+        #     plt.show()
+        # frame = self.transform(frame)
+        s = (frame, sample_name.split('_')[0] + 'KAPAP')
+        # s = frame
+        frame = self.transform(s)
+
         if self.visualise_frames:
-            plt.imshow(frame.squeeze(0), cmap='gray', title='before trans')
+            # plt.imshow(frame.squeeze(0), cmap='Greys_r', title='after trans')
+            plt.imshow(frame.squeeze(0), cmap='Greys_r')
             plt.show()
         sample = {'label': label, 'frame': frame, 'sample_name': sample_name}
-        if self.visualise_frames:
-            plt.imshow(frame.squeeze(0), cmap='Greys_r', title='after trans')
-            plt.show()
         return sample
