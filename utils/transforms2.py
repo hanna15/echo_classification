@@ -380,7 +380,7 @@ class Augment():
         print(mask_fn)
         if not os.path.exists(mask_fn):
             # utilities.generate_masks(self.size, self.orig_img_scale)
-            gen_masks(self.mask_path, self.size, self.orig_img_scale, self.index_file_path)
+            gen_masks(self.mask_path, self.size, self.orig_img_scale, self.index_file_path, fold=fold)
         return torch.load(mask_fn)
 
     def _apply_background_noise(self, sample, mask):
