@@ -376,7 +376,7 @@ class Augment():
 
     def _get_masks(self, fold):
         print('in _get_masks')
-        mask_fn = os.path.join(self.mask_path, f'{self.size}_{int(100 * self.orig_img_scale)}_percent_fold{fold}.pt')
+        mask_fn = os.path.join(self.mask_path, f'{self.size}_{int(100 * float(self.orig_img_scale))}_percent_fold{fold}.pt')
         print(mask_fn)
         if not os.path.exists(mask_fn):
             # utilities.generate_masks(self.size, self.orig_img_scale)
@@ -411,18 +411,12 @@ class Augment():
     def __call__(self, sample):
         # Get sample and corresponding mask
         sample, p_id = sample
-        if torch.rand(1) < 0.25:  # 25 % of images don't get any augmentation
-            if self.return_pid:
-                return (sample, p_id)
-            return sample
-        # If processing multiple samples, assemble mask tensor and reshape samples
-        if isinstance(p_id, tuple):
-            B, T, _, H, W = sample.shape
-            sample = sample.reshape(-1, 1, H, W)
-            mask = torch.cat([self.masks[id].unsqueeze(0) for id in p_id])
-            mask = mask.reshape(B, 1, H, W).repeat(1, T, 1, 1).reshape(-1, 1, H, W)
-        else:
-            mask = self.masks[p_id].unsqueeze(0)
+        # if torch.rand(1) < 0.25:  # 25 % of images don't get any augmentation
+        #     if self.return_pid:
+        #         return (sample, p_id)
+        #     return sample
+
+        mask = self.masks[p_id].unsqueeze(0)
 
         # Try moving mask to gpu if available
         mask = mask.to(sample.device)
@@ -433,32 +427,35 @@ class Augment():
             if torch.rand(1) < 0.5:
                 sample = t(sample)
 
-        # Cut off black border around echo
-        sample = self._cut_border(sample, mask)
-        # Add background noise
-        sample = self._apply_background_noise(sample, mask)
+        pos_trans = False
+        if torch.rand(1) < 0.75:  # 75 % get also positional transforms
+            pos_trans = True
+
+        # always 'gray out' background if positional transforms, and otherwise do it in 25 % of the cases
+        if pos_trans or torch.rand(1) < 0.25:
+            # Cut off black border around echo
+            sample = self._cut_border(sample, mask)
+            # Add background noise
+            sample = self._apply_background_noise(sample, mask)
 
         # Define Random Rotation around top corner
-        if self.positional_transformations[0] is None:
-            rot_center = (sample.shape[1] // 2, 0)
-            rand_rot = transforms.RandomRotation(15, fill=FILL_VAL, center=rot_center)
-            self.positional_transformations[0] = rand_rot
+        if pos_trans:
+            if self.positional_transformations[0] is None:
+                rot_center = (sample.shape[1] // 2, 0)
+                rand_rot = transforms.RandomRotation(15, fill=FILL_VAL, center=rot_center)
+                self.positional_transformations[0] = rand_rot
 
-        # Apply positional transformations
-        for t in self.positional_transformations:
-            # if 0.7 < torch.rand(1):
-            if torch.rand(1) < 0.5:
-                sample = t(sample)
+            # Apply positional transformations
+            for t in self.positional_transformations:
+                # if 0.7 < torch.rand(1):
+                if torch.rand(1) < 0.6:
+                    sample = t(sample)
 
         # Retrieve original shape
         # sample = self._apply_mask(sample, mask)
 
         # Add speckle noise to background
         sample = self._add_background_speckle_noise(sample)
-
-        # Reshape sample back to batched timeseries in case of batch augmentation
-        if isinstance(p_id, tuple):
-            sample = sample.reshape(B, T, 1, H, W)
 
         if self.return_pid:
             return (sample, p_id)
@@ -677,7 +674,7 @@ def gen_masks(mask_path, resize, orig_scale_fac, index_file_path, fold=0):
     print('in get_masks')
     # mask_path = os.path.expanduser(os.path.join('~', '.echo-net', 'masks'))
     mask_fn = os.path.join(mask_path,
-                           f'{resize}_{int(100 * orig_scale_fac)}_percent_fold{fold}.pt')
+                           f'{resize}_{int(100 * float(orig_scale_fac))}_percent_fold{fold}.pt')
     # Get a mask for each patient
     print("Assembling echo masks.")
     masks = {}
