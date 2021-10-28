@@ -56,6 +56,8 @@ parser.add_argument('--num_workers', type=int, default=4, help='The number of wo
 parser.add_argument('--max_p', type=float, default=90, help='Percentile for max expansion frames')
 parser.add_argument('--augment', action='store_true',
                     help='set this flag to apply ALL augmentation transformations to training data')
+parser.add_argument('--aug_type', type=int, default=2,
+                    help='What augmentation type to use (1 for 25% not, 2 for gray vs. background, 3 for as in his thesis')
 parser.add_argument('--noise', action='store_true',
                     help='Apply random noise augmentation')
 parser.add_argument('--intensity', action='store_true',
@@ -125,12 +127,8 @@ def get_run_name():
         k = ''
     else:
         k = '.k' + str(args.k)
-    if args.fold is None:
-        fold = ''
-    else:
-        fold = '.f' + str(args.fold)
     run_name = run_id + args.model + '_' + args.optimizer + '_lt_' + long_label_type_to_short[args.label_type]\
-               + k + fold + '.lr_' + str(args.lr) + '.batch_' + str(args.batch_size)
+               + k + '.lr_' + str(args.lr) + '.batch_' + str(args.batch_size)
     if args.decay_factor > 0.0:
         run_name += str(args.decay_factor)  # only add to description if not default
     if args.decay_patience < 1000:
@@ -294,35 +292,28 @@ def save_model_and_res(model, run_name, target_lst, pred_lst, val_target_lst, va
     :param epoch: Current epoch for the given model
     :param fold: If cross-validation is being used, this is the current fold
     """
-    if epoch is None:
-        base_name = run_name + '_final'
-    else:  # Append epoch name to the model name
-        base_name = run_name + '_e' + str(epoch)
+    fold = '' if fold is None else 'fold' + str(fold) + '_'
+    epoch = '_final' if epoch is None else '_e' + str(epoch)
+    base_name = fold + run_name + epoch
 
-    if fold is None:  # If not k-fold cross validation, save results in base dirs
-        res_dir = os.path.join(BASE_RES_DIR, base_name)
-        model_dir = BASE_MODEL_DIR
-    else:
-        res_dir = os.path.join(BASE_RES_DIR, 'fold' + str(fold), base_name)
-        model_dir = os.path.join(BASE_MODEL_DIR, 'fold' + str(fold))
-
-    os.makedirs(res_dir, exist_ok=True)  # create sub-directory for this base model name
-
+    res_dir = os.path.join(BASE_RES_DIR, run_name, base_name)
+    model_dir = os.path.join(BASE_MODEL_DIR, run_name)
+    os.makedirs(res_dir, exist_ok=True)
+    os.makedirs(model_dir, exist_ok=True)
     model_file_name = base_name + '.pt'
-    targ_file_name = 'targets_' + base_name + '.npy'
-    pred_file_name = 'preds_' + base_name + '.npy'
-    sample_file_names = 'samples_' + base_name + '.npy'
+    targ_file_name = 'targets.npy'
+    pred_file_name = 'preds.npy'
+    sample_file_names = 'samples.npy'
 
     # Just before saving the model, delete older versions of the model and results, to save space
     for model_file in os.listdir(model_dir):
         # same model but different epoch
         if model_file.split('_e')[0] == model_file_name.split('_e')[0]:
             os.system(f'rm -r {os.path.join(model_dir, model_file)}')
-            res_dir_to_del = os.path.join(BASE_RES_DIR, "fold" + str(fold), model_file[:-3])
+            res_dir_to_del = os.path.join(BASE_RES_DIR, run_name, model_file[:-3])
             if os.path.exists(res_dir_to_del):
                 os.system(f'rm -r {res_dir_to_del}')
     torch.save(model.state_dict(), os.path.join(model_dir, model_file_name))
-    os.makedirs(res_dir, exist_ok=True)  # create sub-directory for this base model name
     np.save(os.path.join(res_dir, 'train_' + targ_file_name), target_lst)
     np.save(os.path.join(res_dir, 'train_' + pred_file_name), pred_lst)
     np.save(os.path.join(res_dir, 'train_' + sample_file_names), sample_names)
@@ -509,12 +500,16 @@ def main():
     #         train_transforms = get_augment_transforms(individual_augments)
     #     else:  # No augmentation
     #         train_transforms = get_base_transforms(hist_eq=args.hist_eq)
-
-    train_transforms = get_transforms(train_index_file_path, dataset_orig_img_scale=args.scaling_factor, resize=224,
-                                      augment=True, fold=args.fold, valid=False)
-    valid_transforms = get_transforms(valid_index_file_path, dataset_orig_img_scale=args.scaling_factor, resize=224,
-                                      augment=False, fold=args.fold, valid=True)
     # valid_transforms = get_base_transforms(hist_eq=args.hist_eq)
+
+    if args.augment and not args.load_model:  # All augmentations
+        train_transforms = get_transforms(train_index_file_path, dataset_orig_img_scale=args.scaling_factor, resize=224,
+                                          augment=args.aug_type, fold=args.fold, valid=False)
+    else:
+        train_transforms = get_transforms(train_index_file_path, dataset_orig_img_scale=args.scaling_factor, resize=224,
+                                          augment=0, fold=args.fold, valid=False)
+    valid_transforms = get_transforms(valid_index_file_path, dataset_orig_img_scale=args.scaling_factor, resize=224,
+                                      augment=0, fold=args.fold, valid=True)
 
     train_dataset = EchoDataset(train_index_file_path, label_path, videos_dir=args.videos_dir,
                                 cache_dir=args.cache_dir,
@@ -542,9 +537,6 @@ def main():
         model = SimpleConvNet(num_classes=len(train_dataset.labels)).to(device)
     os.makedirs(BASE_MODEL_DIR, exist_ok=True)  # create model results dir, if not exists
     os.makedirs(BASE_RES_DIR, exist_ok=True)  # create results dir, if not exists
-    for i in range(MAX_NO_FOLDS):
-        os.makedirs(os.path.join(BASE_MODEL_DIR, 'fold' + str(i)), exist_ok=True)  # create model res dir for each fold
-        os.makedirs(os.path.join(BASE_RES_DIR, 'fold' + str(i)), exist_ok=True)  # create res dir for each fold
 
     if args.optimizer == 'adam':
         optimizer = optim.Adam(model.parameters(), lr=args.lr)
