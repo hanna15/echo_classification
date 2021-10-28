@@ -200,8 +200,8 @@ def get_metrics(outputs, targets, samples, prefix='', binary=False):
         targets_per_video.append(res[0])
 
     video_f1 = f1_score(targets_per_video, preds_per_video, average=avg)
-    video_acc = balanced_accuracy_score(targets_per_video, preds_per_video)
-    video_b_acc = accuracy_score(targets_per_video, preds_per_video)
+    video_b_acc = balanced_accuracy_score(targets_per_video, preds_per_video)
+    video_acc = accuracy_score(targets_per_video, preds_per_video)
     video_roc_auc = roc_auc_score(targets_per_video, preds_per_video)
 
     metrics = {'f1' + '/' + prefix: f1_score(targets, preds, average=avg),
