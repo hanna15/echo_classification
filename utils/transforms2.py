@@ -427,32 +427,32 @@ class Augment():
             if torch.rand(1) < 0.5:
                 sample = t(sample)
 
-        pos_trans = False
-        if torch.rand(1) < 0.75:  # 75 % get also positional transforms
-            pos_trans = True
+        # pos_trans = False
+        # if torch.rand(1) < 0.75:  # 75 % get also positional transforms
+        #     pos_trans = True
 
         # always 'gray out' background if positional transforms, and otherwise do it in 25 % of the cases
-        if pos_trans or torch.rand(1) < 0.25:
-            # Cut off black border around echo
-            sample = self._cut_border(sample, mask)
-            # Add background noise
-            sample = self._apply_background_noise(sample, mask)
+        #if pos_trans or torch.rand(1) < 0.25:
+        # Cut off black border around echo
+        sample = self._cut_border(sample, mask)
+        # Add background noise
+        sample = self._apply_background_noise(sample, mask)
 
         # Define Random Rotation around top corner
-        if pos_trans:
-            if self.positional_transformations[0] is None:
-                rot_center = (sample.shape[1] // 2, 0)
-                rand_rot = transforms.RandomRotation(15, fill=FILL_VAL, center=rot_center)
-                self.positional_transformations[0] = rand_rot
+        #if pos_trans:
+        if self.positional_transformations[0] is None:
+            rot_center = (sample.shape[1] // 2, 0)
+            rand_rot = transforms.RandomRotation(15, fill=FILL_VAL, center=rot_center)
+            self.positional_transformations[0] = rand_rot
 
-            # Apply positional transformations
-            for t in self.positional_transformations:
-                # if 0.7 < torch.rand(1):
-                if torch.rand(1) < 0.6:
-                    sample = t(sample)
+        # Apply positional transformations
+        for t in self.positional_transformations:
+            # if 0.7 < torch.rand(1):
+            if torch.rand(1) < 0.4:  # 3 transforms, each 40% chance
+                sample = t(sample)
 
         # Retrieve original shape
-        # sample = self._apply_mask(sample, mask)
+        sample = self._apply_mask(sample, mask)
 
         # Add speckle noise to background
         sample = self._add_background_speckle_noise(sample)
