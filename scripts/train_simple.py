@@ -21,7 +21,7 @@ import warnings
 
 """
 This script trains a basic pre-trained resnet-50 and performs image classification on the first frame of each 
-newborn echocardiography video (KAPAP view). 
+newborn echocardiography video (KAPAP or A4C view). 
 """
 
 parser = ArgumentParser(
@@ -49,6 +49,8 @@ parser.add_argument('--run_id', type=str, default='',
                     help='Set a unique_run_id, to identify run if arguments alone are not enough to identify (e.g. when'
                          'running on same settings multiple times). Id will be pre-pended to the run name derived '
                          'from arguments. Default is empty string, i.e. only identify run with arguments.')
+parser.add_argument('--view', type=str, default='KAPAP', choices=['KAPAP', 'CV'],
+                    help='What view to use')
 # Data parameters
 parser.add_argument('--scaling_factor', default=0.25, help='How much to scale (down) the videos, as a ratio of original '
                                                           'size. Also determines the cache sub-folder')
@@ -515,14 +517,14 @@ def main():
                                 cache_dir=args.cache_dir,
                                 transform=train_transforms, scaling_factor=args.scaling_factor,
                                 procs=args.num_workers, visualise_frames=args.visualise_frames,
-                                percentile=args.max_p)
+                                percentile=args.max_p, view=args.view)
     if args.weight_loss:
         class_weights = torch.tensor(train_dataset.class_weights, dtype=torch.float).to(device)
     else:
         class_weights = None
     valid_dataset = EchoDataset(valid_index_file_path, label_path, videos_dir=args.videos_dir, cache_dir=args.cache_dir,
                                 transform=valid_transforms, scaling_factor=args.scaling_factor, procs=args.num_workers,
-                                visualise_frames=args.visualise_frames, percentile=args.max_p)
+                                visualise_frames=args.visualise_frames, percentile=args.max_p, view=args.view)
     # For the data loader, if only use 1 worker, set it to 0, so data is loaded on the main process
     num_workers = (0 if args.num_workers == 1 else args.num_workers)
 

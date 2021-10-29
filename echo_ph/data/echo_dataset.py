@@ -26,7 +26,7 @@ def load_and_process_video(video_path):
 
 class EchoDataset(Dataset):
     def __init__(self, index_file_path, label_file_path, videos_dir=None, cache_dir=None,
-                 transform=None, scaling_factor=0.5, procs=3, visualise_frames=False, percentile=90):
+                 transform=None, scaling_factor=0.5, procs=3, visualise_frames=False, percentile=90, view='KAPAP'):
         """
         Dataset for echocardiogram processing and classification in PyTorch.
         :param index_file_path: Path to a numpy file, listing all sample names to use in this dataset.
@@ -52,6 +52,7 @@ class EchoDataset(Dataset):
         self.visualise_frames = visualise_frames
         self.scaling_factor = scaling_factor
         self.max_percentile = percentile
+        self.view = view
 
         samples = np.load(index_file_path)
         t = time()
@@ -82,14 +83,14 @@ class EchoDataset(Dataset):
         :return: (line regions, parsed program, sample name)
         """
         if self.cache_dir is None:  # Use raw videos, as no cached processed videos provided
-            curr_video_path = os.path.join(self.videos_dir, str(sample) + 'KAPAP.mp4')  # TODO: Generalise
+            curr_video_path = os.path.join(self.videos_dir, str(sample) + self.view + '.mp4')  # TODO: Generalise
         else:  # Use cached videos
-            curr_video_path = os.path.join(self.cache_dir, str(sample) + 'KAPAP.npy')  # TODO: Generalise
+            curr_video_path = os.path.join(self.cache_dir, str(sample) + self.view + '.npy')  # TODO: Generalise
         if not os.path.exists(curr_video_path):
             print(f'Skipping sample {sample}, as the video path {curr_video_path} does not exist')
             return None, None, None
         try:  # Try to get segmentations
-            sample_w_ending = str(sample) + 'KAPAP'
+            sample_w_ending = str(sample) + self.view
             # Todo: have user pass in segmentation result directory themselves
             segm = SegmentationAnalyser(sample_w_ending, os.path.join('segmented_results', str(self.scaling_factor)))
         except:
@@ -123,7 +124,7 @@ class EchoDataset(Dataset):
         #     plt.imshow(frame.squeeze(0), cmap='gray', title='before trans')
         #     plt.show()
         # frame = self.transform(frame)
-        s = (frame, sample_name.split('_')[0] + 'KAPAP')
+        s = (frame, sample_name.split('_')[0] + self.view)
         # s = frame
         frame = self.transform(s)
 
