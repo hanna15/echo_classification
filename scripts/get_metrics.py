@@ -1,9 +1,17 @@
-import torch
 import numpy as np
 import os
 import pandas as pd
 import csv
-from sklearn.metrics import f1_score, accuracy_score, balanced_accuracy_score, roc_auc_score, classification_report
+from sklearn.metrics import roc_auc_score, classification_report
+from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
+
+parser = ArgumentParser(
+    description='Get metrics',
+    formatter_class=ArgumentDefaultsHelpFormatter)
+# Paths, file name, model names, etc
+parser.add_argument('--res_base_dir', type=str, default='raw_results')
+parser.add_argument('--metric_res_dir', type=str, default='metric_results')
+parser.add_argument('--cr',  action='store_true', help='Set this flag to save also classification report per run')
 
 
 def get_save_classification_report(targets, preds, file_name, metric_res_dir='results', epochs=None):
@@ -43,7 +51,7 @@ def get_scores_for_fold(fold_targets, fold_preds, fold_samples):
     return frame_roc_auc, video_roc_auc
 
 
-def get_all_results(res_base_dir='raw_results', metric_res_dir='results', classification_report=True):
+def get_all_results(res_base_dir='raw_results', metric_res_dir='results', get_clf_report=False):
     os.makedirs(os.path.join(metric_res_dir, 'classification_reports'), exist_ok=True)
     all_runs = os.listdir(res_base_dir)
     val_data = [[] for _ in range(len(all_runs))]  # list of lists, for each run
@@ -87,8 +95,10 @@ def get_all_results(res_base_dir='raw_results', metric_res_dir='results', classi
 
         # Save Results
         if classification_report:
-            get_save_classification_report(val_targets, val_preds, f'val_report_{run_name}.csv')
-            get_save_classification_report(train_targets, train_preds, f'train_report_{run_name}.csv')
+            get_save_classification_report(val_targets, val_preds, f'val_report_{run_name}.csv',
+                                           metric_res_dir=metric_res_dir)
+            get_save_classification_report(train_targets, train_preds, f'train_report_{run_name}.csv',
+                                           metric_res_dir=metric_res_dir)
 
         for metric_values in val_metrics.values():
             mean = np.mean(metric_values)
@@ -108,4 +118,12 @@ def get_all_results(res_base_dir='raw_results', metric_res_dir='results', classi
     df_final.to_csv(os.path.join(metric_res_dir, 'summary.csv'), float_format='%.3f')
 
 
-get_all_results('raw_results')
+def main():
+    get_all_results(res_base_dir=args.res_base_dir, metric_res_dir=args.metric_res_dir, get_clf_report=args.cr)
+
+
+if __name__ == "__main__":
+    args = parser.parse_args()
+    main()
+
+
