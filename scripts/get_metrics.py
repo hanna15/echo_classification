@@ -9,7 +9,7 @@ parser = ArgumentParser(
     description='Get metrics',
     formatter_class=ArgumentDefaultsHelpFormatter)
 # Paths, file name, model names, etc
-parser.add_argument('--res_base_dir', type=str, default='raw_results')
+parser.add_argument('--res_base_dir', type=str, default='results')
 parser.add_argument('--metric_res_dir', type=str, default='metric_results')
 parser.add_argument('--cr',  action='store_true', help='Set this flag to save also classification report per run')
 
@@ -25,7 +25,6 @@ def get_save_classification_report(targets, preds, file_name, metric_res_dir='re
             writer = csv.writer(f)
             writer.writerow([])
             writer.writerow(['epochs'] + epochs)
-    print(classification_report(targets, preds))
 
 
 def get_scores_for_fold(fold_targets, fold_preds, fold_samples):
@@ -94,7 +93,7 @@ def get_all_results(res_base_dir='raw_results', metric_res_dir='results', get_cl
             train_targets.extend(fold_train_targets)
 
         # Save Results
-        if classification_report:
+        if get_clf_report:
             get_save_classification_report(val_targets, val_preds, f'val_report_{run_name}.csv',
                                            metric_res_dir=metric_res_dir)
             get_save_classification_report(train_targets, train_preds, f'train_report_{run_name}.csv',
@@ -119,6 +118,7 @@ def get_all_results(res_base_dir='raw_results', metric_res_dir='results', get_cl
 
 
 def main():
+    print('cr', args.cr)
     get_all_results(res_base_dir=args.res_base_dir, metric_res_dir=args.metric_res_dir, get_clf_report=args.cr)
 
 
