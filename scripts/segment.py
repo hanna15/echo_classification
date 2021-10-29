@@ -20,15 +20,15 @@ This script segments echo videos using pre-trained models from the echo-cv repo:
 parser = ArgumentParser(
     description='Segment echo videos',
     formatter_class=ArgumentDefaultsHelpFormatter)
-parser.add_argument('--models_path', default='/Users/hragnarsd/Documents/masters/segmentation_models',
+parser.add_argument('--models_path', default='/cluster/home/hragnarsd/segmentation_models',
                     help='Path to the directory storing the pre-trained models (checkpoints)')
 parser.add_argument('--cache_dir', default='~/.heart_echo',
                     help='Path to the root directory storing the cached, processed echo videos to be segmented.')
-parser.add_argument('--scaling_factor', default=0.5,
+parser.add_argument('--scaling_factor', default=0.25,
                     help='Scaling factor of cached videos to segment.')
 parser.add_argument('--out_root_dir', default='segmented_results',
                     help='Path to the directory that should store the resulting segmentation maps')
-parser.add_argument('--procs', type=int, default=3, help='Number of processes')
+parser.add_argument('--procs', type=int, default=32, help='Number of processes')
 parser.add_argument('--max_frames', type=int, default=1000, help='Max number of frames to do segmentation prediction on')
 parser.add_argument('--sampling_period', type=int, default=1,
                     help='If sample each frame, set to 1 (default). To sample every x-th frame, set to x.')
