@@ -739,6 +739,7 @@ def get_transforms(
         index_file_path,
         fold=0,
         valid=False,
+        view='KAPAP',
         resize=256,
         crop_to_corner=False,
         shape_equalization=False,
@@ -761,13 +762,13 @@ def get_transforms(
         aug = Identity()
     elif augment == 1:
         aug = Augment(index_file_path, orig_img_scale=dataset_orig_img_scale, size=resize, return_pid=with_pid,
-                      fold=fold, valid=valid)
+                      fold=fold, valid=valid, view=view)
     elif augment == 2:
         aug = Augment2(index_file_path, orig_img_scale=dataset_orig_img_scale, size=resize, return_pid=with_pid,
-                       fold=fold, valid=valid)
+                       fold=fold, valid=valid, view=view)
     else:  # augment == 3
         aug = Augment3(index_file_path, orig_img_scale=dataset_orig_img_scale, size=resize, return_pid=with_pid,
-                       fold=fold, valid=valid)
+                       fold=fold, valid=valid, view=view)
 
     return transforms.Compose(
         [
