@@ -461,7 +461,11 @@ class Augment():
             subset = 'valid'
         else:
             subset = 'train'
-        self.mask_path = os.path.expanduser(os.path.join('~', '.echo-net', 'masks', subset))
+        if view != 'KAPAP':  # If not the default view, create a seperate mask folder for
+            self.mask_path = self.mask_path = os.path.expanduser(os.path.join('~', '.echo-net', 'masks',
+                                                                              subset + '_' + view))
+        else:
+            self.mask_path = os.path.expanduser(os.path.join('~', '.echo-net', 'masks', subset))
         Path(self.mask_path).mkdir(parents=True, exist_ok=True)
 
         # Get masks and corners
