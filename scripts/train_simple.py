@@ -89,6 +89,9 @@ parser.add_argument('--optimizer', default='adam', choices=['adam', 'adamw'], he
 parser.add_argument('--batch_size', type=int, default=128, help='Batch size for training')
 parser.add_argument('--max_epochs', type=int, default=350, help='Max number of epochs to train')
 parser.add_argument('--lr', type=float, default=0.001, help='Learning rate')
+parser.add_argument('--wd', type=float, default=0.002, help='Weight decay value. Currently only used in conjunction with '
+                                                            'selecting adamw optimizer. The default is 1e-2, '
+                                                            'which is also the default for the adamw optimizer')
 parser.add_argument('--decay_factor', type=float, default=0.0, help='Decay lr by this factor for decay on plateau')
 parser.add_argument('--decay_patience', type=int, default=1000,
                     help='Number of epochs to decay lr for decay on plateau')
@@ -130,7 +133,7 @@ def get_run_name():
     else:
         k = '.k' + str(args.k)
     run_name = run_id + args.model + '_' + args.optimizer + '_lt_' + long_label_type_to_short[args.label_type]\
-               + k + '.lr_' + str(args.lr) + '.batch_' + str(args.batch_size)
+               + k + '.lr_' + str(args.lr) + '.batch_' + str(args.batch_size) + '.wd_' + str(args.wd)
     if args.decay_factor > 0.0:
         run_name += str(args.decay_factor)  # only add to description if not default
     if args.decay_patience < 1000:
@@ -543,7 +546,7 @@ def main():
     if args.optimizer == 'adam':
         optimizer = optim.Adam(model.parameters(), lr=args.lr)
     else:  # optimizer = adamw
-        optimizer = optim.AdamW(model.parameters(), lr=args.lr)  # weight-decay provided by default
+        optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.wd)  # weight-decay provided by default
     if args.load_model:  # Create eval datasets (no shuffle) and evaluate model
         eval_loader_train = DataLoader(train_dataset, args.batch_size, shuffle=False, num_workers=num_workers)
         eval_loader_valid = DataLoader(valid_dataset, args.batch_size, shuffle=False, num_workers=num_workers)
