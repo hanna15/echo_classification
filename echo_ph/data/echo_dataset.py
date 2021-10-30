@@ -53,6 +53,10 @@ class EchoDataset(Dataset):
         self.scaling_factor = scaling_factor
         self.max_percentile = percentile
         self.view = view
+        self.view_to_segmodel_view = {  # When training on given view, what segmentation pretrained model view to use
+            'KAPAP': 'psax',
+            'CV': 'a4c'
+        }
 
         samples = np.load(index_file_path)
         t = time()
@@ -91,8 +95,9 @@ class EchoDataset(Dataset):
             return None, None, None
         try:  # Try to get segmentations
             sample_w_ending = str(sample) + self.view
-            # Todo: have user pass in segmentation result directory themselves
-            segm = SegmentationAnalyser(sample_w_ending, os.path.join('segmented_results', str(self.scaling_factor)))
+            # Todo: Generalise segm result dir
+            segm = SegmentationAnalyser(sample_w_ending, os.path.join('segmented_results', str(self.scaling_factor)),
+                                        model_view=self.view_to_segmodel_view[self.view])
         except:
             print(f'Skipping sample {sample}, as the segmented results for it does not exist')
             return None, None, None

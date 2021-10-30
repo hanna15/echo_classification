@@ -7,8 +7,8 @@ from collections import defaultdict
 
 
 class SegmentationAnalyser:
-    def __init__(self, sample_name, segm_res_dir):
-        dir = os.path.join(segm_res_dir, sample_name, 'psax')  # generalise
+    def __init__(self, sample_name, segm_res_dir, model_view='psax'):
+        dir = os.path.join(segm_res_dir, sample_name, model_view)
         segm_mask_path = os.path.join(dir, sample_name + '-frames.segment_pbz2')
         label_path = os.path.join(dir, sample_name + '-segmentation_label.json')
         label_path = os.path.join(os.path.dirname(label_path), sample_name + '-segmentation_label.json')
