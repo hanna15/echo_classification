@@ -472,15 +472,15 @@ def get_resnet(num_classes=3):
 
 
 def main():
-    TORCH_SEED = args.seed
-    torch.manual_seed(TORCH_SEED)  # Fix a seed, to increase reproducibility
-    torch.cuda.manual_seed(TORCH_SEED)
-    torch.cuda.manual_seed_all(TORCH_SEED)
-    np.random.seed(TORCH_SEED)
-    random.seed(TORCH_SEED)
-    torch.backends.cudnn.benchmark = False
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.enabled = False
+    # TORCH_SEED = args.seed
+    # torch.manual_seed(TORCH_SEED)  # Fix a seed, to increase reproducibility
+    # torch.cuda.manual_seed(TORCH_SEED)
+    # torch.cuda.manual_seed_all(TORCH_SEED)
+    # np.random.seed(TORCH_SEED)
+    # random.seed(TORCH_SEED)
+    # torch.backends.cudnn.benchmark = False
+    # torch.backends.cudnn.deterministic = True
+    # torch.backends.cudnn.enabled = False
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Will be training on device', device)
@@ -569,6 +569,15 @@ def main():
 
 
 if __name__ == "__main__":
+    TORCH_SEED = 0
+    torch.manual_seed(TORCH_SEED)  # Fix a seed, to increase reproducibility
+    torch.cuda.manual_seed(TORCH_SEED)
+    torch.cuda.manual_seed_all(TORCH_SEED)
+    np.random.seed(TORCH_SEED)
+    random.seed(TORCH_SEED)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.enabled = False
     args = parser.parse_args()
     BASE_RES_DIR = args.res_dir
     main()
