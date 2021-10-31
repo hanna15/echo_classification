@@ -112,10 +112,12 @@ parser.add_argument('--log_freq', type=int, default=2,
 parser.add_argument('--tb_dir', type=str, default='tb_runs_cv',
                     help='Tensorboard directory - where tensorboard logs are stored.')
 
-MAX_NO_FOLDS = 20
-BASE_RES_DIR = 'results'
+parser.add_argument('--seed', type=int, default=0,
+                    help='Seed to initialise torch, random and numpy with')
+parser.add_argument('--res_dir', type=str, default='results',
+                    help='Name of base directory for results')
+
 BASE_MODEL_DIR = 'models'
-TORCH_SEED = 0
 
 
 def get_run_name():
@@ -137,7 +139,7 @@ def get_run_name():
     else:
         wd = ''
     run_name = run_id + args.model + '_' + args.optimizer + '_lt_' + long_label_type_to_short[args.label_type]\
-               + k + '.lr_' + str(args.lr) + '.batch_' + str(args.batch_size) + wd
+               + k + '.lr_' + str(args.lr) + '.batch_' + str(args.batch_size) + wd + '.seed_' + str(args.seed)
     if args.decay_factor > 0.0:
         run_name += str(args.decay_factor)  # only add to description if not default
     if args.decay_patience < 1000:
@@ -145,7 +147,7 @@ def get_run_name():
     if args.pretrained:
         run_name += '_pre'
     if args.augment:
-        run_name += '_aug'
+        run_name += '_aug' + str(args.aug_type)
     if args.class_balance_per_epoch:
         run_name += '_bal'
     if args.weight_loss:
@@ -470,6 +472,7 @@ def get_resnet(num_classes=3):
 
 
 def main():
+    TORCH_SEED = args.seed
     torch.manual_seed(TORCH_SEED)  # Fix a seed, to increase reproducibility
     torch.cuda.manual_seed(TORCH_SEED)
     torch.cuda.manual_seed_all(TORCH_SEED)
@@ -501,16 +504,6 @@ def main():
     valid_index_file_path = os.path.join(idx_dir, 'valid_samples_' + args.label_type + idx_file_end + '.npy')
 
     # Data & Transforms
-    # if args.augment and not args.load_model:  # All augmentations
-    #     train_transforms = get_augment_transforms(hist_eq=args.hist_eq)  # all other default true
-    # else:
-    #     individual_augments = [args.hist_eq, args.noise, args.intensity, args.rand_resize, args.rotate, args.translate]
-    #     if any(individual_augments):  # Only some specific augmentations
-    #         train_transforms = get_augment_transforms(individual_augments)
-    #     else:  # No augmentation
-    #         train_transforms = get_base_transforms(hist_eq=args.hist_eq)
-    # valid_transforms = get_base_transforms(hist_eq=args.hist_eq)
-
     if args.augment and not args.load_model:  # All augmentations
         train_transforms = get_transforms(train_index_file_path, dataset_orig_img_scale=args.scaling_factor, resize=224,
                                           augment=args.aug_type, fold=args.fold, valid=False, view=args.view)
@@ -577,4 +570,5 @@ def main():
 
 if __name__ == "__main__":
     args = parser.parse_args()
+    BASE_RES_DIR = args.res_dir
     main()
