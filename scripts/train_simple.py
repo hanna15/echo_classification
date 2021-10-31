@@ -135,7 +135,7 @@ def get_run_name():
     if args.wd is not None:
         wd = '.wd_' + str(args.wd)
     else:
-        wd = None
+        wd = ''
     run_name = run_id + args.model + '_' + args.optimizer + '_lt_' + long_label_type_to_short[args.label_type]\
                + k + '.lr_' + str(args.lr) + '.batch_' + str(args.batch_size) + wd
     if args.decay_factor > 0.0:
