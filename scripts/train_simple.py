@@ -149,8 +149,9 @@ def get_run_name():
         wd = '.wd_' + str(args.wd)
     else:
         wd = ''
-    run_name = run_id + args.model + '_' + args.optimizer + '_lt_' + long_label_type_to_short[args.label_type]\
-               + k + '.lr_' + str(args.lr) + '.batch_' + str(args.batch_size) + wd + '.seed_' + str(args.seed)
+    run_name = run_id + args.model + '_' + args.optimizer + '_lt_' + long_label_type_to_short[args.label_type] \
+               + k + '.lr_' + str(args.lr) + '.batch_' + str(args.batch_size) + wd + '.seed_' + str(args.seed) + \
+               '.me_' + str(args.max_epochs)
     if args.decay_factor > 0.0:
         run_name += str(args.decay_factor)  # only add to description if not default
     if args.decay_patience < 1000:
