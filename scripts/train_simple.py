@@ -45,7 +45,7 @@ parser.add_argument('--videos_dir', default=None,
                     help='Path to the directory containing the raw videos - if work on raw videos')
 parser.add_argument('--cache_dir', default=None,
                     help='Path to the directory containing the cached and processed numpy videos - if work on those')
-parser.add_argument('--label_type', default='2class', choices=['2class', '2class_drop_ambiguous', '3class'],
+parser.add_argument('--label_type', default='2class_drop_ambiguous', choices=['2class', '2class_drop_ambiguous', '3class'],
                     help='How many classes for the labels, and in some cases also variations of dropping ambiguous '
                          'labels. Will be used to fetch the correct label file and train and valid index files')
 parser.add_argument('--fold', default=None, type=int,
@@ -494,6 +494,7 @@ def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Will be training on device', device)
     run_name = get_run_name()
+    print('Run:', run_name)
     use_wandb = False  # Set this to false for now as can't seem to use on cluster
     if not args.debug:
         warnings.simplefilter("ignore")  # Ignore warnings, so they don't fill output log files
@@ -555,12 +556,12 @@ def main():
     if args.optimizer == 'adam':
         if args.wd is not None:
             optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.wd)
-        else:
+        else:  # default => no wd
             optimizer = optim.Adam(model.parameters(), lr=args.lr)
     else:  # optimizer = adamw
         if args.wd is not None:
             optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.wd)
-        else:
+        else:  # default, wd=0.02
             optimizer = optim.AdamW(model.parameters(), lr=args.lr)
     if args.load_model:  # Create eval datasets (no shuffle) and evaluate model
         eval_loader_train = DataLoader(train_dataset, args.batch_size, shuffle=False, num_workers=num_workers)
