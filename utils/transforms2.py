@@ -14,6 +14,16 @@ from scipy.spatial import ConvexHull
 import multiprocessing as mp
 FILL_VAL = 0.3
 
+TORCH_SEED = 0
+torch.manual_seed(TORCH_SEED)  # Fix a seed, to increase reproducibility
+torch.cuda.manual_seed(TORCH_SEED)
+torch.cuda.manual_seed_all(TORCH_SEED)
+np.random.seed(TORCH_SEED)
+random.seed(TORCH_SEED)
+torch.backends.cudnn.benchmark = False
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.enabled = False
+
 
 class Identity():
     """
@@ -22,24 +32,6 @@ class Identity():
 
     def __call__(self, sample):
         return sample
-
-
-class VideoSubsample():
-    """
-    Randomly sample specified number of frames from video
-    """
-
-    def __init__(self, num_frames):
-        self.num_frames = num_frames
-
-    def __call__(self, sample):
-        sample, p_id = sample
-        T = len(sample)
-        start = random.randint(0, T - 2 * self.num_frames + 1)
-        frames = []
-        for i in range(self.num_frames):
-            frames.append(sample[start + 2 * i].squeeze())
-        return frames, p_id
 
 
 class ConvertToTensor():
@@ -80,7 +72,7 @@ class RandResizeCrop():
 
     def __call__(self, sample):
         H, W = sample.shape[-2], sample.shape[-1]
-        rand_scale = random.random() * (self.max_scale - 1) + 1
+        rand_scale = torch.rand(1) * (self.max_scale - 1) + 1
         sample = transforms.functional.resize(sample, size=(int(rand_scale * H), int(rand_scale * W)))
         sample = transforms.functional.center_crop(sample, output_size=(H, W))
         return sample
@@ -107,7 +99,7 @@ class RandResizePad():
 
     def __call__(self, sample):
         H, W = sample.shape[-2], sample.shape[-1]
-        rand_scale = random.random() * (1 - self.min_scale) + self.min_scale
+        rand_scale = torch.rand(1) * (1 - self.min_scale) + self.min_scale
         sample = transforms.functional.resize(sample, size=(int(rand_scale * H), int(rand_scale * W)))
         new_H, new_W = sample.shape[-2], sample.shape[-1]
         pad_up_down, pad_left_right = (H - new_H) // 2, (W - new_W) // 2
@@ -169,7 +161,7 @@ class RandomBrightnessAdjustment():
     """
 
     def __call__(self, sample):
-        rand_factor = random.random() * 0.7 + 0.5
+        rand_factor = torch.rand(1) * 0.7 + 0.5
         sample = F.adjust_brightness(sample, brightness_factor=rand_factor)
         return sample
 
@@ -181,7 +173,7 @@ class RandomGammaCorrection():
     """
 
     def __call__(self, sample):
-        rand_gamma = random.random() * 1.75 + 0.25
+        rand_gamma = torch.rand(1) * 1.75 + 0.25
         sample = F.adjust_gamma(sample, gamma=rand_gamma)
         return sample
 
@@ -193,9 +185,9 @@ class RandomSharpness():
 
     def __call__(self, sample):
         if 0.5 < torch.rand(1):
-            rand_factor = random.random() * 7 + 1
+            rand_factor = torch.rand(1) * 7 + 1
         else:
-            rand_factor = random.random()
+            rand_factor = torch.rand(1)
         sample = F.adjust_sharpness(sample, sharpness_factor=rand_factor)
         return sample
 
@@ -448,8 +440,7 @@ def get_transforms(
         noise=False,
         augment=2,
         with_pid=False,
-        dataset_orig_img_scale=0.25,
-        num_video_frames=None
+        dataset_orig_img_scale=0.25
 ):
     """
     Compose a set of prespecified transformation using the torchvision transform compose class
@@ -457,7 +448,6 @@ def get_transforms(
 
     return transforms.Compose(
         [
-            VideoSubsample(num_video_frames) if num_video_frames is not None else Identity(),
             HistEq(),
             ConvertToTensor(),
             Normalize(),
