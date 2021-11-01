@@ -502,7 +502,8 @@ def main():
         if use_wandb:
             wandb.init(project='echo_classification', entity='hragnarsd', config={}, mode="offline")
             wandb.config.update(args)
-        tb_writer = SummaryWriter(log_dir=os.path.join(args.tb_dir, run_name))
+        fold = '' if args.fold is None else 'fold' + str(args.fold) + '_'
+        tb_writer = SummaryWriter(log_dir=os.path.join(args.tb_dir, fold + run_name))
     else:
         tb_writer = None
 
