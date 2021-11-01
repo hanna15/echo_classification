@@ -24,6 +24,17 @@ This script trains a basic pre-trained resnet-50 and performs image classificati
 newborn echocardiography video (KAPAP or A4C view). 
 """
 
+
+TORCH_SEED = 0
+torch.manual_seed(TORCH_SEED)  # Fix a seed, to increase reproducibility
+torch.cuda.manual_seed(TORCH_SEED)
+torch.cuda.manual_seed_all(TORCH_SEED)
+np.random.seed(TORCH_SEED)
+random.seed(TORCH_SEED)
+torch.backends.cudnn.benchmark = False
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.enabled = False
+
 parser = ArgumentParser(
     description='Train a Machine Learning model for classifying newborn echocardiography. Please make sure to have '
                 'already generated label files, placed in project_root/label_files, and valid/train index files, placed'
@@ -504,6 +515,9 @@ def main():
     valid_index_file_path = os.path.join(idx_dir, 'valid_samples_' + args.label_type + idx_file_end + '.npy')
 
     # Data & Transforms
+    g = torch.Generator()
+    g.manual_seed(TORCH_SEED)
+    	
     if args.augment and not args.load_model:  # All augmentations
         train_transforms = get_transforms(train_index_file_path, dataset_orig_img_scale=args.scaling_factor, resize=224,
                                           augment=args.aug_type, fold=args.fold, valid=False, view=args.view)
@@ -557,27 +571,23 @@ def main():
         evaluate(model, model_name, eval_loader_train, eval_loader_valid)
     else:  # Create training datasets (with shuffling or sampler) and train
         if args.class_balance_per_epoch:
-            sampler = WeightedRandomSampler(train_dataset.example_weights, train_dataset.num_samples)
+            sampler = WeightedRandomSampler(train_dataset.example_weights, train_dataset.num_samples, generator=g)
             train_loader = DataLoader(train_dataset, args.batch_size, shuffle=False, num_workers=num_workers,
-                                      sampler=sampler)  # Sampler is mutually exclusive with shuffle
+                                      sampler=sampler, worker_init_fn=seed_worker, generator=g)  # Sampler is mutually exclusive with shuffle
         else:
-            train_loader = DataLoader(train_dataset, args.batch_size, shuffle=True, num_workers=num_workers)
+            train_loader = DataLoader(train_dataset, args.batch_size, shuffle=True, num_workers=num_workers, worker_init_fn=seed_worker, generator=g)
         valid_loader = DataLoader(valid_dataset, args.batch_size, shuffle=False, num_workers=num_workers)
 
         train(model, train_loader, valid_loader, len(train_dataset), len(valid_dataset), tb_writer, run_name, optimizer,
               weights=class_weights, binary=binary, use_wandb=use_wandb)
 
+def seed_worker(worker_id):
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
+
 
 if __name__ == "__main__":
-    TORCH_SEED = 0
-    torch.manual_seed(TORCH_SEED)  # Fix a seed, to increase reproducibility
-    torch.cuda.manual_seed(TORCH_SEED)
-    torch.cuda.manual_seed_all(TORCH_SEED)
-    np.random.seed(TORCH_SEED)
-    random.seed(TORCH_SEED)
-    torch.backends.cudnn.benchmark = False
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.enabled = False
     args = parser.parse_args()
     BASE_RES_DIR = args.res_dir
     main()
