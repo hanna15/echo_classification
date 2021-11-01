@@ -123,8 +123,6 @@ parser.add_argument('--log_freq', type=int, default=2,
 parser.add_argument('--tb_dir', type=str, default='tb_runs_cv',
                     help='Tensorboard directory - where tensorboard logs are stored.')
 
-parser.add_argument('--seed', type=int, default=0,
-                    help='Seed to initialise torch, random and numpy with')
 parser.add_argument('--res_dir', type=str, default='results',
                     help='Name of base directory for results')
 
@@ -150,8 +148,7 @@ def get_run_name():
     else:
         wd = ''
     run_name = run_id + args.model + '_' + args.optimizer + '_lt_' + long_label_type_to_short[args.label_type] \
-               + k + '.lr_' + str(args.lr) + '.batch_' + str(args.batch_size) + wd + '.seed_' + str(args.seed) + \
-               '.me_' + str(args.max_epochs)
+               + k + '.lr_' + str(args.lr) + '.batch_' + str(args.batch_size) + wd + '.me_' + str(args.max_epochs)
     if args.decay_factor > 0.0:
         run_name += str(args.decay_factor)  # only add to description if not default
     if args.decay_patience < 1000:
