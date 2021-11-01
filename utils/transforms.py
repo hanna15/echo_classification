@@ -99,8 +99,8 @@ class Intensity():
         self.intensity_transformations = [
             RandomSharpness(),
             RandomBrightnessAdjustment(),
-            RandomGammaCorrection()  #,
-            # SaltPepperNoise()
+            RandomGammaCorrection(),
+            SaltPepperNoise()
         ]
 
     def __call__(self, sample):
@@ -174,9 +174,9 @@ class RandomGammaCorrection():
     """
 
     def __call__(self, sample):
-        # rand_gamma = random.random() * 1.75 + 0.25
+        rand_gamma = random.random() * 1.75 + 0.25
         # Below 0 => makes shadows brighter. Above 0 => makes shadows darker.
-        rand_gamma = random.uniform(0.5, 1.5)  # I prefer not larger range, to keep 'normal' looking
+        # rand_gamma = random.uniform(0.5, 1.5)  # I prefer not larger range, to keep 'normal' looking
         sample = F.adjust_gamma(sample, gamma=rand_gamma)
         return sample
 
@@ -188,8 +188,8 @@ class RandomSharpness():
 
     def __call__(self, sample):
         if 0.5 < torch.rand(1):  # 50 % increase sharpness (e.g. 2 increases sharpness by 2)
-            # rand_factor = random.random() * 7 + 1
-            rand_factor = random.uniform(1, 4)  # max 4x sharpness
+            rand_factor = random.random() * 7 + 1
+            # rand_factor = random.uniform(1, 4)  # max 4x sharpness
         else:  # 50% of the time, reduce sharpness (by providing number < 1)
             # 0 gives a blurred image, 1 gives original image
             rand_factor = random.random()  # num between [0, 1( ==> but in reality no change of exact 0
@@ -281,7 +281,8 @@ def get_base_transforms(hist_eq=True):
 
 def get_list_of_base_transforms_except_norm():
     return [transforms.ToPILImage(),
-            transforms.Resize(size=(128, 128), interpolation=i_mode.BICUBIC),
+            # transforms.Resize(size=(128, 128), interpolation=i_mode.BICUBIC),
+            transforms.Resize(size=(224, 224), interpolation=i_mode.BICUBIC),
             transforms.ToTensor()]
 
 
