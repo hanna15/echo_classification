@@ -37,7 +37,7 @@ def get_scores_for_fold(fold_targets, fold_preds, fold_samples):
         if vid_id in res_per_video:
             res_per_video[vid_id][1].append(p)  # append all predictions for the given video
         else:
-            res_per_video[vid_id] = (t, [])  # first initialise it
+            res_per_video[vid_id] = (t, [p])  # first initialise it
     fold_targets_per_video = []
     fold_preds_per_video = []
     # Get a single prediction per video

@@ -34,6 +34,9 @@ random.seed(TORCH_SEED)
 torch.backends.cudnn.benchmark = False
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.enabled = False
+# Generator for same data
+g = torch.Generator()
+g.manual_seed(TORCH_SEED)
 
 parser = ArgumentParser(
     description='Train a Machine Learning model for classifying newborn echocardiography. Please make sure to have '
@@ -208,7 +211,7 @@ def get_metrics(outputs, targets, samples, prefix='', binary=False):
         if vid_id in res_per_video:
             res_per_video[vid_id][1].append(p)
         else:
-            res_per_video[vid_id] = (t, [])  # first is the target, second is list of preds
+            res_per_video[vid_id] = (t, [p])  # first is the target, second is list of preds
     targets_per_video = []
     preds_per_video = []
     for res in res_per_video.values():
@@ -514,10 +517,6 @@ def main():
     train_index_file_path = os.path.join(idx_dir, 'train_samples_' + args.label_type + idx_file_end + '.npy')
     valid_index_file_path = os.path.join(idx_dir, 'valid_samples_' + args.label_type + idx_file_end + '.npy')
 
-    # Data & Transforms
-    g = torch.Generator()
-    g.manual_seed(TORCH_SEED)
-    	
     if args.augment and not args.load_model:  # All augmentations
         train_transforms = get_transforms(train_index_file_path, dataset_orig_img_scale=args.scaling_factor, resize=224,
                                           augment=args.aug_type, fold=args.fold, valid=False, view=args.view)
