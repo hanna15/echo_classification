@@ -58,9 +58,7 @@ def main():
         adv_t_composed = transforms.Compose([sharp, bright, gamma, resize_pad, rotate, translate])
         # for i in range(4):
         for trans_name, trans in zip(trans_names, adv_t):
-            #if trans_name == 'BrightAdjust':
-            # t = transforms.Compose([trans])
-            t = transforms.Compose([util_trans.RandomNoise()])
+            t = transforms.Compose([trans])
             tmp_frame = t(frame)
             show_frame(tmp_frame, trans_name)
 
