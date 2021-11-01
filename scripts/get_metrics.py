@@ -20,7 +20,7 @@ def get_save_classification_report(targets, preds, file_name, metric_res_dir='re
     df['support'] = df['support'].astype(int)
     file_name = os.path.join(metric_res_dir, 'classification_reports', file_name)
     df.to_csv(file_name, float_format='%.3f')
-    if epochs is not None: # Add also epochs info
+    if epochs is not None:  # Add also epochs info
         with open(file_name, 'a') as f:
             writer = csv.writer(f)
             writer.writerow([])
@@ -78,7 +78,7 @@ def get_all_results(res_base_dir='raw_results', metric_res_dir='results', get_cl
             'Video F1, neg': []
         }
         epochs = []
-        for fold_model_name in os.listdir(os.path.join(res_base_dir, run_name)):
+        for fold_model_name in sorted(os.listdir(os.path.join(res_base_dir, run_name))):
             epoch = int(fold_model_name.rsplit('_e', 1)[-1])
             epochs.append(epoch)
             fold_dir = os.path.join(res_base_dir, run_name, fold_model_name)
