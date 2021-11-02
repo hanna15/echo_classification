@@ -8,6 +8,7 @@ import random
 import numpy as np
 from functools import partial
 import torchvision.transforms.functional as F
+from sympy import Line, Circle
 
 # Imports for mask geneation
 from scipy.spatial import ConvexHull
@@ -23,6 +24,51 @@ random.seed(TORCH_SEED)
 torch.backends.cudnn.benchmark = False
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.enabled = False
+
+
+class CropToCorners():
+    """
+    Crop echo to have the its four corners at the border
+    """
+
+    def _get_masks(self):
+        mask_fn = os.path.join(self.mask_path, f'{-1}_{int(100 * float(self.orig_img_scale))}_percent_fold{self.fold}.pt')
+        if not os.path.exists(mask_fn):
+            gen_masks(self.mask_path, -1, self.orig_img_scale, self.index_file_path, fold=self.fold, view=self.view)
+        return torch.load(mask_fn)
+
+    def _get_mask_corners(self):
+        corners_fn = os.path.join(self.corner_path, f'{int(100 * float(self.orig_img_scale))}_percent_fold{self.fold}.pt')
+        if not os.path.exists(corners_fn):
+            gen_mask_corners(self.mask_path, self.corner_path, self.orig_img_scale, self.index_file_path,
+                             fold=self.fold, view=self.view)
+        return torch.load(corners_fn)
+
+    def __init__(self, mask_path, corner_path, index_file_path, orig_img_scale=0.25, fold=0, view='KAPAP'):
+        self.orig_img_scale = orig_img_scale
+        self.index_file_path = index_file_path
+        self.fold = fold
+        self.view = view
+        self.mask_path = mask_path
+        self.corner_path = corner_path
+
+        # Generate pre-computation libraries for masks and corners
+        Path(self.mask_path).mkdir(parents=True, exist_ok=True)
+        Path(self.corner_path).mkdir(parents=True, exist_ok=True)
+
+        # Get masks and corners
+        self.masks = self._get_masks()
+        self.corners = self._get_mask_corners()
+
+    def __call__(self, sample):
+        sample, p_id = sample
+        T, R, B, L = self.corners[p_id]
+        if L[1] == -1:  # can't have negative at the beginning of range
+            L[1] = 0
+        if T[0] == -1:  # can't have negative at the beginning of range
+            T[0] = 0
+        sample = sample[:, T[0]:B[0], L[1]:R[1]]
+        return sample, p_id
 
 
 class Identity():
@@ -42,9 +88,9 @@ class ConvertToTensor():
     def __call__(self, sample):
         sample, p_id = sample
         if isinstance(sample, list):
-            return (torch.stack([torch.from_numpy(s).float().unsqueeze(0) for s in sample]), p_id)
+            return torch.stack([torch.from_numpy(s).float().unsqueeze(0) for s in sample]), p_id
         else:
-            return (torch.from_numpy(sample).float().unsqueeze(0), p_id)
+            return torch.from_numpy(sample).float().unsqueeze(0), p_id
 
 
 class HistEq():
@@ -58,7 +104,7 @@ class HistEq():
             sample = [cv2.equalizeHist(s) for s in sample]
         else:
             sample = cv2.equalizeHist(sample)
-        return (sample, p_id)
+        return sample, p_id
 
 
 class RandResizeCrop():
@@ -137,7 +183,7 @@ class Normalize():
 
     def __call__(self, sample):
         sample, p_id = sample
-        return (sample.float() / 255., p_id)
+        return sample.float() / 255., p_id
 
 
 class SaltPepperNoise():
@@ -283,19 +329,10 @@ class Augment():
     brightness adjustment, Gamma Correction, blurring and sharpening the image
     """
 
-    def __init__(self, index_file_path, orig_img_scale=0.5, size=-1, return_pid=False, fold=0, valid=False,
+    def __init__(self, mask_path, index_file_path, orig_img_scale=0.5, size=-1, return_pid=False, fold=0, valid=False,
                  view='KAPAP', aug_type=2):
         self.return_pid = return_pid
-        # Generate pre-computation libraries for masks and corners
-        if valid:
-            subset = 'valid'
-        else:
-            subset = 'train'
-        if view != 'KAPAP':  # If not the default view, create a separate mask folder for
-            self.mask_path = self.mask_path = os.path.expanduser(os.path.join('~', '.echo-net', 'masks',
-                                                                              subset + '_' + view))
-        else:
-            self.mask_path = os.path.expanduser(os.path.join('~', '.echo-net', 'masks', subset))
+        self.mask_path = mask_path
         Path(self.mask_path).mkdir(parents=True, exist_ok=True)
 
         # Get masks and corners and set other parameters
@@ -321,7 +358,8 @@ class Augment():
 
     def _get_masks(self, fold):
         print('in _get_masks')
-        mask_fn = os.path.join(self.mask_path, f'{self.size}_{int(100 * float(self.orig_img_scale))}_percent_fold{fold}.pt')
+        mask_fn = os.path.join(self.mask_path,
+                               f'{self.size}_{int(100 * float(self.orig_img_scale))}_percent_fold{fold}.pt')
         print(mask_fn)
         if not os.path.exists(mask_fn):
             # utilities.generate_masks(self.size, self.orig_img_scale)
@@ -440,28 +478,33 @@ def get_transforms(
         noise=False,
         augment=2,
         with_pid=False,
+        crop_to_corner=False,
         dataset_orig_img_scale=0.25
 ):
     """
     Compose a set of prespecified transformation using the torchvision transform compose class
     """
-
+    subset = 'valid' if valid else 'train'
+    view_set = '' if view == 'KAPAP' else f'_{view}'  # Only specify separately if not default
+    mask_path = os.path.expanduser(os.path.join('~', '.echo-net', 'masks', subset + view_set))
+    corner_path = os.path.expanduser(os.path.join('~', '.echo-net', 'mask_corners', subset + view_set))
     return transforms.Compose(
         [
             HistEq(),
             ConvertToTensor(),
             Normalize(),
+            CropToCorners(mask_path, corner_path, index_file_path, orig_img_scale=dataset_orig_img_scale, fold=fold,
+                          view=view) if crop_to_corner else Identity(),
             Resize(resize, return_pid=(with_pid or augment)),
-            Augment(index_file_path, orig_img_scale=dataset_orig_img_scale, size=resize, return_pid=with_pid,
+            Augment(mask_path, index_file_path, orig_img_scale=dataset_orig_img_scale, size=resize, return_pid=with_pid,
                     fold=fold, valid=valid, view=view, aug_type=augment) if augment != 0 else Identity(),
-            RandomNoise() if noise else Identity(),
+            RandomNoise() if noise else Identity()
         ]
     )
 
 
 def gen_masks(mask_path, resize, orig_scale_fac, index_file_path, fold=0, view='KAPAP'):
     print('in get_masks')
-    # mask_path = os.path.expanduser(os.path.join('~', '.echo-net', 'masks'))
     mask_fn = os.path.join(mask_path,
                            f'{resize}_{int(100 * float(orig_scale_fac))}_percent_fold{fold}.pt')
     # Get a mask for each patient
@@ -470,9 +513,9 @@ def gen_masks(mask_path, resize, orig_scale_fac, index_file_path, fold=0, view='
     p_ids = [str(id) + view for id in np.load(index_file_path)]
     results = []
     # for p_id in p_ids:
-    # result = _gen_mask(index_file_path, p_id, resize, orig_scale_fac)
-    with mp.Pool(processes=16) as pool:
-        # for result in pool.map(_gen_mask, p_ids):
+    #     result = _gen_mask(index_file_path, p_id, resize, orig_scale_fac)
+    #     results.append(result)
+    with mp.Pool(processes=3) as pool:  # 16
         for result in pool.map(partial(_gen_mask, index_file_path, resize, orig_scale_fac), p_ids):
             results.append(result)
     # Join results
@@ -525,3 +568,76 @@ def _gen_mask(index_file_path, resize, orig_scale_fac, p_id):
                     hull_mask[i, j] = 0
 
     return p_id, hull_mask
+
+
+def gen_mask_corners(mask_path, corner_path, orig_scale_fac, index_file_path, fold=0, view='KAPAP'):
+    # Assemble precomputation paths
+    # mask_path = os.path.expanduser(os.path.join('~', '.echo-net', 'masks'))
+    mask_fn = os.path.join(mask_path, f'{-1}_{int(100 * float(orig_scale_fac))}_percent_fold{fold}.pt')
+    # corner_path = os.path.expanduser(os.path.join('~', '.echo-net', 'mask_corners'))
+    corners_fn = os.path.join(corner_path, f'{int(100 * float(orig_scale_fac))}_percent_fold{fold}.pt')
+
+    # Load masks
+    if not os.path.exists(mask_fn):
+        gen_masks(mask_path, -1, orig_scale_fac, index_file_path, fold=fold, view=view)
+    masks = torch.load(mask_fn)
+
+    # Generate Corners
+    corners = {}
+    for p_id in masks:
+        corners[p_id] = np.int32(get_arc_points_from_mask(masks[p_id]))
+    torch.save(corners, corners_fn)
+
+
+def get_arc_points_from_mask(mask):
+    # Get min and max nonzero entries
+    mask_entries = torch.nonzero(mask)
+    min_y, min_x = torch.min(mask_entries, dim=0).values
+    max_y, max_x = torch.max(mask_entries, dim=0).values
+
+    # Get top point
+    top_candidates = mask_entries[mask_entries[:, 0] == min_y]
+    top_left = torch.tensor([min_y, torch.min(top_candidates, dim=0).values[1]])
+    top_right = torch.tensor([min_y, torch.max(top_candidates, dim=0).values[1]])
+
+    left_candidates = mask_entries[mask_entries[:, 1] == min_x]
+    left_top = torch.tensor([torch.min(left_candidates, dim=0).values[0], min_x])
+    left_bot = torch.tensor([torch.max(left_candidates, dim=0).values[0], min_x])
+
+    right_candidates = mask_entries[mask_entries[:, 1] == max_x]
+    right_top = torch.tensor([torch.min(right_candidates, dim=0).values[0], max_x])
+    right_bot = torch.tensor([torch.max(right_candidates, dim=0).values[0], max_x])
+
+    left_line = Line(top_left, left_top)
+    right_line = Line(top_right, right_top)
+    top = np.array(left_line.intersection(right_line)[0])
+
+    # Compute bottom point
+    bot = []
+    bot_candidates = mask_entries[mask_entries[:, 0] == max_y]
+    bot.append(torch.tensor([[max_y, torch.min(bot_candidates, dim=0).values[1]]]))
+    bot.append(torch.tensor([[max_y, torch.max(bot_candidates, dim=0).values[1]]]))
+    bot = np.concatenate(bot)
+    bot = 0.5 * (bot[0] + bot[1])
+
+    # Create arc circle
+    arc = Circle(left_bot, bot, right_bot)
+
+    # Compute left and right points
+    left_int = arc.intersection(left_line)
+    right_int = arc.intersection(right_line)
+
+    # Always take point with highest first coordinate (lowest)
+    if len(left_int) == 1 or left_int[0][0] > left_int[1][0]:
+        left = left_int[0]
+    else:
+        left = left_int[1]
+    if len(right_int) == 1 or right_int[0][0] > right_int[1][0]:
+        right = right_int[0]
+    else:
+        right = right_int[1]
+    left = np.array(left)
+    right = np.array(right)
+
+    corners = np.array([top, right, bot, left])
+    return corners
