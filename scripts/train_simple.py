@@ -520,12 +520,12 @@ def main():
     if args.augment and not args.load_model:  # All augmentations
         train_transforms = get_transforms(train_index_file_path, dataset_orig_img_scale=args.scaling_factor, resize=224,
                                           augment=args.aug_type, fold=args.fold, valid=False, view=args.view,
-                                          crop_to_corner=True)
+                                          crop_to_corner=False)
     else:
         train_transforms = get_transforms(train_index_file_path, dataset_orig_img_scale=args.scaling_factor, resize=224,
-                                          augment=0, fold=args.fold, valid=False, view=args.view, crop_to_corner=True)
+                                          augment=0, fold=args.fold, valid=False, view=args.view, crop_to_corner=False)
     valid_transforms = get_transforms(valid_index_file_path, dataset_orig_img_scale=args.scaling_factor, resize=224,
-                                      augment=0, fold=args.fold, valid=True, view=args.view, crop_to_corner=True)
+                                      augment=0, fold=args.fold, valid=True, view=args.view, crop_to_corner=False)
 
     train_dataset = EchoDataset(train_index_file_path, label_path, videos_dir=args.videos_dir,
                                 cache_dir=args.cache_dir,
@@ -575,7 +575,8 @@ def main():
             train_loader = DataLoader(train_dataset, args.batch_size, shuffle=False, num_workers=num_workers,
                                       sampler=sampler, worker_init_fn=seed_worker, generator=g)  # Sampler is mutually exclusive with shuffle
         else:
-            train_loader = DataLoader(train_dataset, args.batch_size, shuffle=True, num_workers=num_workers, worker_init_fn=seed_worker, generator=g)
+            train_loader = DataLoader(train_dataset, args.batch_size, shuffle=True, num_workers=num_workers,
+                                      worker_init_fn=seed_worker, generator=g)
         valid_loader = DataLoader(valid_dataset, args.batch_size, shuffle=False, num_workers=num_workers)
 
         train(model, train_loader, valid_loader, len(train_dataset), len(valid_dataset), tb_writer, run_name, optimizer,
@@ -591,3 +592,5 @@ if __name__ == "__main__":
     args = parser.parse_args()
     BASE_RES_DIR = args.res_dir
     main()
+
+

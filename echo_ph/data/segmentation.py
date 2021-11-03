@@ -36,7 +36,7 @@ class SegmentationAnalyser:
     #                 break
     #     return max_expansion_frames
 
-    def extract_max_percentile_frames(self, percentile=90):
+    def extract_max_percentile_frames(self, percentile=90, maxp=True):
         volume_to_frame_nr = defaultdict(list)  # initialise the dict with an empty list (to add frame ids)
         for frame_nr, segm_mask_frame in enumerate(self.segm_mask):
             rv_vol = np.count_nonzero(segm_mask_frame == self.labels['rv'])
@@ -44,8 +44,12 @@ class SegmentationAnalyser:
             volume_to_frame_nr[lv_vol + rv_vol].append(frame_nr)
 
         volume_list = np.asarray(list(volume_to_frame_nr))
-        percentile = np.percentile(volume_list, percentile, interpolation="nearest")
-        top_percentile_volumes = volume_list[volume_list >= percentile]
+        p = percentile if maxp else (100-percentile)  # if find minp, reverse
+        percentile = np.percentile(volume_list, p, interpolation="nearest")
+        if maxp:
+            top_percentile_volumes = volume_list[volume_list >= percentile]
+        else:
+            top_percentile_volumes = volume_list[volume_list <= percentile]
         max_expansion_frames = []
         for top_p in top_percentile_volumes:
             top_frame = volume_to_frame_nr[top_p]
