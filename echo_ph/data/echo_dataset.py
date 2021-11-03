@@ -127,10 +127,9 @@ class EchoDataset(Dataset):
 
         s = (frame, sample_name.split('_')[0] + self.view)
         frame = self.transform(s)
-
         if self.visualise_frames:
-            # plt.imshow(frame.squeeze(0), cmap='Greys_r', title='after trans')
             plt.imshow(frame.squeeze(0), cmap='Greys_r')
+            plt.title(str(label) + ' - ' + str(sample_name))
             plt.show()
         sample = {'label': label, 'frame': frame, 'sample_name': sample_name}
         return sample
