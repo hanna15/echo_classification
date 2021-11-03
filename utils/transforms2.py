@@ -34,13 +34,13 @@ class CropToCorners():
     def _get_masks(self):
         mask_fn = os.path.join(self.mask_path, f'{-1}_{int(100 * float(self.orig_img_scale))}_percent_fold{self.fold}.pt')
         if not os.path.exists(mask_fn):
-            gen_masks(self.mask_path, -1, self.orig_img_scale, self.index_file_path, fold=self.fold, view=self.view)
+            gen_masks(mask_fn, -1, self.orig_img_scale, self.index_file_path, view=self.view)
         return torch.load(mask_fn)
 
     def _get_mask_corners(self):
         corners_fn = os.path.join(self.corner_path, f'{int(100 * float(self.orig_img_scale))}_percent_fold{self.fold}.pt')
         if not os.path.exists(corners_fn):
-            gen_mask_corners(self.mask_path, self.corner_path, self.orig_img_scale, self.index_file_path,
+            gen_mask_corners(self.mask_path, corners_fn, self.orig_img_scale, self.index_file_path,
                              fold=self.fold, view=self.view)
         return torch.load(corners_fn)
 
@@ -63,12 +63,16 @@ class CropToCorners():
     def __call__(self, sample):
         sample, p_id = sample
         T, R, B, L = self.corners[p_id]
-        if L[1] == -1:  # can't have negative at the beginning of range
+        if L[1] < 0:  # can't have negative at the beginning of range
             L[1] = 0
-        if T[0] == -1:  # can't have negative at the beginning of range
+        if T[0] < 0:  # can't have negative at the beginning of range
             T[0] = 0
-        sample = sample[:, T[0]:B[0], L[1]:R[1]]
-        return sample, p_id
+        cropped_sample = sample[:, T[0]:B[0], L[1]:R[1]]
+        _, H, W = cropped_sample.shape
+        if H == 0 or W == 0:
+            print('failed for pid', p_id)
+            return sample, p_id
+        return cropped_sample, p_id
 
 
 class Identity():
@@ -363,7 +367,7 @@ class Augment():
         print(mask_fn)
         if not os.path.exists(mask_fn):
             # utilities.generate_masks(self.size, self.orig_img_scale)
-            gen_masks(self.mask_path, self.size, self.orig_img_scale, self.index_file_path, fold=fold, view=self.view)
+            gen_masks(mask_fn, self.size, self.orig_img_scale, self.index_file_path, view=self.view)
         return torch.load(mask_fn)
 
     def _apply_background_noise(self, sample, mask):
@@ -503,19 +507,16 @@ def get_transforms(
     )
 
 
-def gen_masks(mask_path, resize, orig_scale_fac, index_file_path, fold=0, view='KAPAP'):
-    print('in get_masks')
-    mask_fn = os.path.join(mask_path,
-                           f'{resize}_{int(100 * float(orig_scale_fac))}_percent_fold{fold}.pt')
+def gen_masks(mask_fn, resize, orig_scale_fac, index_file_path, view='KAPAP'):
     # Get a mask for each patient
     print("Assembling echo masks.")
     masks = {}
     p_ids = [str(id) + view for id in np.load(index_file_path)]
     results = []
     # for p_id in p_ids:
-    #     result = _gen_mask(index_file_path, p_id, resize, orig_scale_fac)
+    #     result = _gen_mask(index_file_path, resize, orig_scale_fac, p_id)
     #     results.append(result)
-    with mp.Pool(processes=3) as pool:  # 16
+    with mp.Pool(processes=16) as pool:
         for result in pool.map(partial(_gen_mask, index_file_path, resize, orig_scale_fac), p_ids):
             results.append(result)
     # Join results
@@ -570,16 +571,13 @@ def _gen_mask(index_file_path, resize, orig_scale_fac, p_id):
     return p_id, hull_mask
 
 
-def gen_mask_corners(mask_path, corner_path, orig_scale_fac, index_file_path, fold=0, view='KAPAP'):
+def gen_mask_corners(mask_path, corners_fn, orig_scale_fac, index_file_path, fold=0, view='KAPAP'):
     # Assemble precomputation paths
-    # mask_path = os.path.expanduser(os.path.join('~', '.echo-net', 'masks'))
     mask_fn = os.path.join(mask_path, f'{-1}_{int(100 * float(orig_scale_fac))}_percent_fold{fold}.pt')
-    # corner_path = os.path.expanduser(os.path.join('~', '.echo-net', 'mask_corners'))
-    corners_fn = os.path.join(corner_path, f'{int(100 * float(orig_scale_fac))}_percent_fold{fold}.pt')
 
     # Load masks
     if not os.path.exists(mask_fn):
-        gen_masks(mask_path, -1, orig_scale_fac, index_file_path, fold=fold, view=view)
+        gen_masks(mask_path, -1, orig_scale_fac, index_file_path, view=view)
     masks = torch.load(mask_fn)
 
     # Generate Corners
