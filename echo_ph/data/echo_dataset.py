@@ -26,7 +26,8 @@ def load_and_process_video(video_path):
 
 class EchoDataset(Dataset):
     def __init__(self, index_file_path, label_file_path, videos_dir=None, cache_dir=None,
-                 transform=None, scaling_factor=0.5, procs=3, visualise_frames=False, percentile=90, view='KAPAP'):
+                 transform=None, scaling_factor=0.5, procs=3, visualise_frames=False, percentile=90, view='KAPAP',
+                 min_expansion=False):
         """
         Dataset for echocardiogram processing and classification in PyTorch.
         :param index_file_path: Path to a numpy file, listing all sample names to use in this dataset.
@@ -52,6 +53,7 @@ class EchoDataset(Dataset):
         self.visualise_frames = visualise_frames
         self.scaling_factor = scaling_factor
         self.max_percentile = percentile
+        self.min_expansion = min_expansion
         self.view = view
         self.view_to_segmodel_view = {  # When training on given view, what segmentation pretrained model view to use
             'KAPAP': 'psax',
@@ -112,7 +114,8 @@ class EchoDataset(Dataset):
             segmented_video = load_and_process_video(curr_video_path)
         else:  # load already processed numpy video
             segmented_video = np.load(curr_video_path)
-        max_exp_frame_nrs = segm.extract_max_percentile_frames(percentile=self.max_percentile)
+        max_exp_frame_nrs = segm.extract_max_percentile_frames(percentile=self.max_percentile,
+                                                               min_exp=self.min_expansion)
         max_exp_frames = segmented_video[max_exp_frame_nrs]
         sample_names = [str(sample) + '_' + str(fram_nr) for fram_nr in max_exp_frame_nrs]
         return max_exp_frames, label, sample_names
