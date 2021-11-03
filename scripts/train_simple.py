@@ -519,12 +519,13 @@ def main():
 
     if args.augment and not args.load_model:  # All augmentations
         train_transforms = get_transforms(train_index_file_path, dataset_orig_img_scale=args.scaling_factor, resize=224,
-                                          augment=args.aug_type, fold=args.fold, valid=False, view=args.view)
+                                          augment=args.aug_type, fold=args.fold, valid=False, view=args.view,
+                                          crop_to_corner=True)
     else:
         train_transforms = get_transforms(train_index_file_path, dataset_orig_img_scale=args.scaling_factor, resize=224,
-                                          augment=0, fold=args.fold, valid=False, view=args.view)
+                                          augment=0, fold=args.fold, valid=False, view=args.view, crop_to_corner=True)
     valid_transforms = get_transforms(valid_index_file_path, dataset_orig_img_scale=args.scaling_factor, resize=224,
-                                      augment=0, fold=args.fold, valid=True, view=args.view)
+                                      augment=0, fold=args.fold, valid=True, view=args.view, crop_to_corner=True)
 
     train_dataset = EchoDataset(train_index_file_path, label_path, videos_dir=args.videos_dir,
                                 cache_dir=args.cache_dir,
