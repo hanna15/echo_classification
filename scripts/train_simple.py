@@ -133,6 +133,7 @@ parser.add_argument('--tb_dir', type=str, default='tb_runs_cv',
 
 parser.add_argument('--res_dir', type=str, default='results',
                     help='Name of base directory for results')
+parser.add_argument('--segm_masks', action='store_true', help='set this flag to train only on segmentation masks')
 
 BASE_MODEL_DIR = 'models'
 
@@ -157,6 +158,8 @@ def get_run_name():
         wd = ''
     run_name = run_id + args.model + '_' + args.optimizer + '_lt_' + long_label_type_to_short[args.label_type] \
                + k + '.lr_' + str(args.lr) + '.batch_' + str(args.batch_size) + wd + '.me_' + str(args.max_epochs)
+    if args.segm_masks:
+        run_name += 'SEGM'
     if args.decay_factor > 0.0:
         run_name += str(args.decay_factor)  # only add to description if not default
     if args.decay_patience < 1000:
@@ -515,19 +518,21 @@ def main():
     if args.augment and not args.load_model:  # All augmentations
         train_transforms = get_transforms(train_index_file_path, dataset_orig_img_scale=args.scaling_factor, resize=224,
                                           augment=args.aug_type, fold=args.fold, valid=False, view=args.view,
-                                          crop_to_corner=False)
+                                          crop_to_corner=False, segm_mask_only=args.segm_masks)
     else:
         train_transforms = get_transforms(train_index_file_path, dataset_orig_img_scale=args.scaling_factor, resize=224,
-                                          augment=0, fold=args.fold, valid=False, view=args.view, crop_to_corner=False)
+                                          augment=0, fold=args.fold, valid=False, view=args.view, crop_to_corner=False,
+                                          segm_mask_only=args.segm_masks)
     valid_transforms = get_transforms(valid_index_file_path, dataset_orig_img_scale=args.scaling_factor, resize=224,
-                                      augment=0, fold=args.fold, valid=True, view=args.view, crop_to_corner=False)
+                                      augment=0, fold=args.fold, valid=True, view=args.view, crop_to_corner=False,
+                                      segm_mask_only=args.segm_masks)
 
     train_dataset = EchoDataset(train_index_file_path, label_path, videos_dir=args.videos_dir,
                                 cache_dir=args.cache_dir,
                                 transform=train_transforms, scaling_factor=args.scaling_factor,
                                 procs=args.num_workers, visualise_frames=args.visualise_frames,
                                 percentile=args.max_p, view=args.view, min_expansion=args.min_expansion,
-                                num_rand_frames=args.num_rand_frames, segm_masks=True)
+                                num_rand_frames=args.num_rand_frames, segm_masks=args.segm_masks)
     if args.weight_loss:
         class_weights = torch.tensor(train_dataset.class_weights, dtype=torch.float).to(device)
     else:
@@ -535,7 +540,8 @@ def main():
     valid_dataset = EchoDataset(valid_index_file_path, label_path, videos_dir=args.videos_dir, cache_dir=args.cache_dir,
                                 transform=valid_transforms, scaling_factor=args.scaling_factor, procs=args.num_workers,
                                 visualise_frames=args.visualise_frames, percentile=args.max_p, view=args.view,
-                                min_expansion=args.min_expansion, num_rand_frames=args.num_rand_frames, segm_masks=True)
+                                min_expansion=args.min_expansion, num_rand_frames=args.num_rand_frames,
+                                segm_masks=args.segm_masks)
     # For the data loader, if only use 1 worker, set it to 0, so data is loaded on the main process
     num_workers = (0 if args.num_workers == 1 else args.num_workers)
 
