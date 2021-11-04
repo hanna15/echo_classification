@@ -67,11 +67,8 @@ class CropToCorners():
             L[1] = 0
         if T[0] < 0:  # can't have negative at the beginning of range
             T[0] = 0
+        print(sample.shape)
         cropped_sample = sample[:, T[0]:B[0], L[1]:R[1]]
-        _, H, W = cropped_sample.shape
-        if H == 0 or W == 0:
-            print('failed for pid', p_id)
-            return sample, p_id
         return cropped_sample, p_id
 
 

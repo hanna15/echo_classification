@@ -55,3 +55,6 @@ class SegmentationAnalyser:
             top_frame = volume_to_frame_nr[top_p]
             max_expansion_frames.extend(top_frame)
         return max_expansion_frames
+
+    def get_segm_mask(self):
+        return self.segm_mask
