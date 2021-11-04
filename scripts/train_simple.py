@@ -12,7 +12,7 @@ from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 import wandb
 from echo_ph.data.echo_dataset import EchoDataset
 from echo_ph.models.conv_nets import ConvNet, SimpleConvNet
-from echo_ph.models.my_resnet import resnet_simpler
+from echo_ph.models.resnets import resnet_simpler, get_resnet18
 from echo_ph.data.ph_labels import long_label_type_to_short
 from utils.transforms import get_augment_transforms, get_base_transforms
 from utils.transforms2 import get_transforms
@@ -473,20 +473,6 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
         tb_writer.close()
 
 
-def get_resnet(num_classes=3):
-    model = models.resnet18(pretrained=args.pretrained)
-    in_channels = 1
-    # Change the input layer to take Grayscale image, instead of RGB images (set in_channels as 1)
-    # original definition of the first layer on the ResNet class
-    # model.conv1 = nn.Conv2d(3, 64, kernel_size=(7,7), stride=(2, 2), padding=(3, 3), bias=False)
-    model.conv1 = nn.Conv2d(in_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
-
-    # Change the output layer to output 3 classes instead of 1000 classes
-    num_ftrs = model.fc.in_features
-    model.fc = nn.Linear(num_ftrs, num_classes)
-    return model
-
-
 def main():
     # TORCH_SEED = args.seed
     # torch.manual_seed(TORCH_SEED)  # Fix a seed, to increase reproducibility
@@ -549,7 +535,7 @@ def main():
 
     # Model & Optimizers
     if args.model == 'resnet':
-        model = get_resnet(num_classes=len(train_dataset.labels)).to(device)
+        model = get_resnet18(num_classes=len(train_dataset.labels)).to(device)
     elif args.model == 'res_simple':
         model = resnet_simpler(num_classes=len(train_dataset.labels), drop_prob=args.dropout).to(device)
     elif args.model == 'conv':
@@ -586,6 +572,7 @@ def main():
 
         train(model, train_loader, valid_loader, len(train_dataset), len(valid_dataset), tb_writer, run_name, optimizer,
               weights=class_weights, binary=binary, use_wandb=use_wandb)
+
 
 def seed_worker(worker_id):
     worker_seed = torch.initial_seed() % 2**32

@@ -4,6 +4,8 @@ import torch.nn as nn
 from typing import Type, Any, Callable, Union, List, Optional
 from dropblock import DropBlock2D, LinearScheduler
 from torchvision.models.resnet import BasicBlock, ResNet
+from torchvision.models import resnet18
+
 
 def conv3x3(in_planes: int, out_planes: int, stride: int = 1, groups: int = 1, dilation: int = 1) -> nn.Conv2d:
     """3x3 convolution with padding"""
@@ -260,3 +262,12 @@ def resnet_simpler(num_classes, drop_prob, **kwargs: Any) -> ResNet:
     return _resnet(BasicBlock, [1, 1, 1, 1], **kwargs)
 
 
+def get_resnet18(num_classes=3):
+    model = resnet18(pretrained=True)
+    in_channels = 1  # Grayscale
+    model.conv1 = nn.Conv2d(in_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
+
+    # Change the output layer to output num_classes instead of 1000 classes
+    num_ftrs = model.fc.in_features
+    model.fc = nn.Linear(num_ftrs, num_classes)
+    return model
