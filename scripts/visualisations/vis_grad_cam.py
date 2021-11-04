@@ -71,11 +71,15 @@ def main():
     cam = GradCAM(model=model, target_layers=target_layers, use_cuda=args.use_cuda)
     print("Done initialising grad cam with model")
     target_category = None
-    output_dir = 'grad_cam_vis'
-    os.makedirs(output_dir, exist_ok=True)
+    if args.save:
+        output_dir = 'grad_cam_vis'
+        os.makedirs(output_dir, exist_ok=True)
     for batch in data_loader:
         img = batch['frame']
         sample_name = batch['sample_name'][0]
+        label = batch['label'][0].item()
+        pred = torch.max(model(img), dim=1).indices[0].item()
+        corr = 'CORR' if label == pred else 'WRONG'
         grayscale_cam = cam(input_tensor=img,
                             target_category=target_category)
         img = np.stack((img.squeeze(),)*3, axis=-1)  # create a 3-channel image from the grayscale img
@@ -84,7 +88,7 @@ def main():
             plt.imshow(cam_image)
             plt.show()
         if args.save:
-            cv2.imwrite(os.path.join(output_dir, sample_name + '.jpg'), cam_image)
+            cv2.imwrite(os.path.join(output_dir, f'{sample_name}-{corr}-{label}.jpg'), cam_image)
 
 
 if __name__ == '__main__':
