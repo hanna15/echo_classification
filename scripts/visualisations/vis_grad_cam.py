@@ -36,28 +36,56 @@ parser.add_argument('--min_expansion', action='store_true',
 parser.add_argument('--crop', action='store_true', help='If crop to corners')
 parser.add_argument('--save', action='store_true', help='If to save grad cam images')
 parser.add_argument('--show', action='store_true', help='If to show grad cam images')
+parser.add_argument('--train_set', action='store_true', help='Also get grad cam for the images in the training set, '
+                                                             'with random augmentation (type 3)')
 
 
-def get_data_loader():
+def get_data_loader(train=False):
     idx_dir = 'index_files' if args.k is None else os.path.join('index_files', 'k' + str(args.k))
     idx_file_end = '' if args.fold is None else '_' + str(args.fold)
-
-    valid_index_file_path = os.path.join(idx_dir, 'valid_samples_' + args.label_type + idx_file_end + '.npy')
+    idx_file_base_name = 'train_samples_' if train else 'valid_samples_'
+    index_file_path = os.path.join(idx_dir, idx_file_base_name + args.label_type + idx_file_end + '.npy')
     label_path = os.path.join('label_files', 'labels_' + args.label_type + '.pkl')
-
-    valid_transforms = get_transforms(valid_index_file_path, dataset_orig_img_scale=args.scale, resize=224,
-                                      augment=0, fold=args.fold, valid=True, view=args.view, crop_to_corner=args.crop)
-    valid_dataset = EchoDataset(valid_index_file_path, label_path, cache_dir=args.cache_dir,
-                                transform=valid_transforms, scaling_factor=args.scale, procs=args.n_workers,
+    aug_type = 3 if train else 0
+    transforms = get_transforms(index_file_path, dataset_orig_img_scale=args.scale, resize=224,
+                                augment=aug_type, fold=args.fold, valid=(not train), view=args.view, crop_to_corner=args.crop)
+    valid_dataset = EchoDataset(index_file_path, label_path, cache_dir=args.cache_dir,
+                                transform=transforms, scaling_factor=args.scale, procs=args.n_workers,
                                 percentile=args.max_p, view=args.view, min_expansion=args.min_expansion)
-
     data_loader = DataLoader(valid_dataset, batch_size=1, shuffle=False, num_workers=args.n_workers)
     return data_loader
 
 
+def get_save_grad_cam_images(data_loader, model, cam, device, subset='valid'):
+    target_category = None
+    if args.save:
+        model_name = os.path.basename(args.model_path)[:-3]
+        output_dir = os.path.join('grad_cam_vis', model_name, subset)
+        os.makedirs(output_dir, exist_ok=True)
+    for batch in data_loader:
+        img = batch['frame'].to(device)
+        sample_name = batch['sample_name'][0]
+        label = batch['label'][0].item()
+        pred = torch.max(model(img), dim=1).indices[0].item()
+        corr = 'CORR' if label == pred else 'WRONG'
+        title = f'{sample_name}-{corr}-{label}.jpg'
+        grayscale_cam = cam(input_tensor=img,
+                            target_category=target_category)
+        img = np.stack((img.squeeze().cpu(),) * 3, axis=-1)  # create a 3-channel image from the grayscale img
+        cam_image = show_cam_on_image(img, grayscale_cam[0])
+        if args.show:
+            plt.imshow(cam_image)
+            plt.title(title)
+            plt.show()
+        if args.save:
+            cv2.imwrite(os.path.join(output_dir, title), cam_image)
+
+
 def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    data_loader = get_data_loader()
+    val_data_loader = get_data_loader()
+    if args.train_set:
+        train_data_loader = get_data_loader(train=True)
     print("Done loading data")
     num_classes = 2 if args.label_type.startswith('2') else 3
     model = get_resnet18(num_classes=num_classes)
@@ -69,27 +97,10 @@ def main():
     target_layers = [model.layer4[-1]]
     cam = GradCAM(model=model, target_layers=target_layers, use_cuda=torch.cuda.is_available())
     print("Done initialising grad cam with model")
-    target_category = None
-    if args.save:
-        output_dir = 'grad_cam_vis'
-        os.makedirs(output_dir, exist_ok=True)
-    for batch in data_loader:
-        img = batch['frame'].to(device)
-        sample_name = batch['sample_name'][0]
-        label = batch['label'][0].item()
-        pred = torch.max(model(img), dim=1).indices[0].item()
-        corr = 'CORR' if label == pred else 'WRONG'
-        title = f'{sample_name}-{corr}-{label}.jpg'
-        grayscale_cam = cam(input_tensor=img,
-                            target_category=target_category)
-        img = np.stack((img.squeeze().cpu(),)*3, axis=-1)  # create a 3-channel image from the grayscale img
-        cam_image = show_cam_on_image(img, grayscale_cam[0])
-        if args.show:
-            plt.imshow(cam_image)
-            plt.title(title)
-            plt.show()
-        if args.save:
-            cv2.imwrite(os.path.join(output_dir, title), cam_image)
+
+    get_save_grad_cam_images(val_data_loader, model, cam, device)
+    if args.train_set:
+        get_save_grad_cam_images(train_data_loader, model, cam, device, subset='train')
 
 
 if __name__ == '__main__':
