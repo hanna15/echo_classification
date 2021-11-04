@@ -67,7 +67,6 @@ class CropToCorners():
             L[1] = 0
         if T[0] < 0:  # can't have negative at the beginning of range
             T[0] = 0
-        print(sample.shape)
         cropped_sample = sample[:, T[0]:B[0], L[1]:R[1]]
         return cropped_sample, p_id
 
