@@ -84,7 +84,6 @@ def main():
             plt.imshow(cam_image)
             plt.show()
         if args.save:
-            print('saving to dir',os.path.join(output_dir, sample_name + '.jpg'))
             cv2.imwrite(os.path.join(output_dir, sample_name + '.jpg'), cam_image)
 
 
