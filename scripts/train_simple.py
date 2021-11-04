@@ -527,7 +527,7 @@ def main():
                                 transform=train_transforms, scaling_factor=args.scaling_factor,
                                 procs=args.num_workers, visualise_frames=args.visualise_frames,
                                 percentile=args.max_p, view=args.view, min_expansion=args.min_expansion,
-                                num_rand_frames=args.num_rand_frames)
+                                num_rand_frames=args.num_rand_frames, segm_masks=True)
     if args.weight_loss:
         class_weights = torch.tensor(train_dataset.class_weights, dtype=torch.float).to(device)
     else:
@@ -535,7 +535,7 @@ def main():
     valid_dataset = EchoDataset(valid_index_file_path, label_path, videos_dir=args.videos_dir, cache_dir=args.cache_dir,
                                 transform=valid_transforms, scaling_factor=args.scaling_factor, procs=args.num_workers,
                                 visualise_frames=args.visualise_frames, percentile=args.max_p, view=args.view,
-                                min_expansion=args.min_expansion, num_rand_frames=args.num_rand_frames)
+                                min_expansion=args.min_expansion, num_rand_frames=args.num_rand_frames, segm_masks=True)
     # For the data loader, if only use 1 worker, set it to 0, so data is loaded on the main process
     num_workers = (0 if args.num_workers == 1 else args.num_workers)
 
