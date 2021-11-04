@@ -82,7 +82,7 @@ def main():
         title = f'{sample_name}-{corr}-{label}.jpg'
         grayscale_cam = cam(input_tensor=img,
                             target_category=target_category)
-        img = np.stack((img.squeeze(),)*3, axis=-1)  # create a 3-channel image from the grayscale img
+        img = np.stack((img.squeeze().cpu(),)*3, axis=-1)  # create a 3-channel image from the grayscale img
         cam_image = show_cam_on_image(img, grayscale_cam[0])
         if args.show:
             plt.imshow(cam_image)
