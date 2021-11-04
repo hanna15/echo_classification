@@ -58,6 +58,7 @@ def get_data_loader():
 
 def main():
     data_loader = get_data_loader()
+    print("Done loading data")
     num_classes = 2 if args.label_type.startswith('2') else 3
     model = get_resnet18(num_classes=num_classes)
     if args.model_path is not None:
@@ -68,20 +69,22 @@ def main():
 
     target_layers = [model.layer4[-1]]
     cam = GradCAM(model=model, target_layers=target_layers, use_cuda=args.use_cuda)
+    print("Done initialising grad cam with model")
     target_category = None
     output_dir = 'grad_cam_vis'
+    os.makedirs(output_dir, exist_ok=True)
     for batch in data_loader:
         img = batch['frame']
         sample_name = batch['sample_name'][0]
         grayscale_cam = cam(input_tensor=img,
                             target_category=target_category)
-        img = img.squeeze()
-        img = np.stack((img,)*3, axis=-1)
+        img = np.stack((img.squeeze(),)*3, axis=-1)  # create a 3-channel image from the grayscale img
         cam_image = show_cam_on_image(img, grayscale_cam[0])
         if args.show:
             plt.imshow(cam_image)
             plt.show()
         if args.save:
+            print('saving to dir',os.path.join(output_dir, sample_name + '.jpg'))
             cv2.imwrite(os.path.join(output_dir, sample_name + '.jpg'), cam_image)
 
 
