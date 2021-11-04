@@ -33,7 +33,6 @@ parser.add_argument('--max_p', default=95, type=int)
 # Optional additional arguments
 parser.add_argument('--min_expansion', action='store_true',
                     help='Percentile for min expansion frames instead of maximum')
-parser.add_argument('--use_cuda', action='store_true')
 parser.add_argument('--crop', action='store_true', help='If crop to corners')
 parser.add_argument('--save', action='store_true', help='If to save grad cam images')
 parser.add_argument('--show', action='store_true', help='If to show grad cam images')
@@ -57,6 +56,7 @@ def get_data_loader():
 
 
 def main():
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     data_loader = get_data_loader()
     print("Done loading data")
     num_classes = 2 if args.label_type.startswith('2') else 3
@@ -64,31 +64,32 @@ def main():
     if args.model_path is not None:
         model.load_state_dict(torch.load(args.model_path))
     model.eval()
-    if args.use_cuda:
-        model = model.cuda()
+    model = model.to(device)
 
     target_layers = [model.layer4[-1]]
-    cam = GradCAM(model=model, target_layers=target_layers, use_cuda=args.use_cuda)
+    cam = GradCAM(model=model, target_layers=target_layers, use_cuda=torch.cuda.is_available())
     print("Done initialising grad cam with model")
     target_category = None
     if args.save:
         output_dir = 'grad_cam_vis'
         os.makedirs(output_dir, exist_ok=True)
     for batch in data_loader:
-        img = batch['frame']
+        img = batch['frame'].to(device)
         sample_name = batch['sample_name'][0]
         label = batch['label'][0].item()
         pred = torch.max(model(img), dim=1).indices[0].item()
         corr = 'CORR' if label == pred else 'WRONG'
+        title = f'{sample_name}-{corr}-{label}.jpg'
         grayscale_cam = cam(input_tensor=img,
                             target_category=target_category)
         img = np.stack((img.squeeze(),)*3, axis=-1)  # create a 3-channel image from the grayscale img
         cam_image = show_cam_on_image(img, grayscale_cam[0])
         if args.show:
             plt.imshow(cam_image)
+            plt.title(title)
             plt.show()
         if args.save:
-            cv2.imwrite(os.path.join(output_dir, f'{sample_name}-{corr}-{label}.jpg'), cam_image)
+            cv2.imwrite(os.path.join(output_dir, title), cam_image)
 
 
 if __name__ == '__main__':
