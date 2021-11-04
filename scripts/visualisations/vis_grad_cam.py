@@ -50,11 +50,13 @@ def get_data_loader(train=False):
     label_path = os.path.join('label_files', 'labels_' + args.label_type + '.pkl')
     aug_type = 3 if train else 0
     transforms = get_transforms(index_file_path, dataset_orig_img_scale=args.scale, resize=224,
-                                augment=aug_type, fold=args.fold, valid=(not train), view=args.view, crop_to_corner=args.crop)
-    valid_dataset = EchoDataset(index_file_path, label_path, cache_dir=args.cache_dir,
-                                transform=transforms, scaling_factor=args.scale, procs=args.n_workers,
-                                percentile=args.max_p, view=args.view, min_expansion=args.min_expansion)
-    data_loader = DataLoader(valid_dataset, batch_size=1, shuffle=False, num_workers=args.n_workers)
+                                augment=aug_type, fold=args.fold, valid=(not train), view=args.view,
+                                crop_to_corner=args.crop)
+    dataset = EchoDataset(index_file_path, label_path, cache_dir=args.cache_dir,
+                          transform=transforms, scaling_factor=args.scale, procs=args.n_workers,
+                          percentile=args.max_p, view=args.view, min_expansion=args.min_expansion,
+                          num_rand_frames=args.num_rand_frames)
+    data_loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=args.n_workers)
     return data_loader
 
 
