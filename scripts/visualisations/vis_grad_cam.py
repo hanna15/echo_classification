@@ -33,6 +33,8 @@ parser.add_argument('--max_p', default=95, type=int)
 # Optional additional arguments
 parser.add_argument('--min_expansion', action='store_true',
                     help='Percentile for min expansion frames instead of maximum')
+parser.add_argument('--num_rand_frames', type=int, default=None,
+                    help='Set this only if get random frames instead of max/min')
 parser.add_argument('--crop', action='store_true', help='If crop to corners')
 parser.add_argument('--save', action='store_true', help='If to save grad cam images')
 parser.add_argument('--show', action='store_true', help='If to show grad cam images')
