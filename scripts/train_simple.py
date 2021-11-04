@@ -72,6 +72,9 @@ parser.add_argument('--num_workers', type=int, default=4, help='The number of wo
 parser.add_argument('--max_p', type=float, default=90, help='Percentile for max expansion frames')
 parser.add_argument('--min_expansion', action='store_true',
                     help='Percentile for min expansion frames instead of maximum')
+parser.add_argument('--num_rand_frames', type=int, default=None,
+                    help='If pick random frames per video (instead of frames corresponding to max/min expansion), '
+                         'set the number of frames per video.')
 parser.add_argument('--augment', action='store_true',
                     help='set this flag to apply ALL augmentation transformations to training data')
 parser.add_argument('--aug_type', type=int, default=2,
@@ -180,10 +183,12 @@ def get_run_name():
         run_name += '_t'
     if args.model != 'resnet':
         run_name += '_drop' + str(args.dropout)
-    if args.max_p != 90:
+    if args.max_p != 90 and args.num_rand_frames is None:
         run_name += '_p' + str(args.max_p)
     if args.min_expansion:
         run_name += 'MIN'
+    if args.num_rand_frames is not None:
+        run_name += 'rand_n' + str(args.num_rand_frames)
     return run_name
 
 
@@ -521,7 +526,8 @@ def main():
                                 cache_dir=args.cache_dir,
                                 transform=train_transforms, scaling_factor=args.scaling_factor,
                                 procs=args.num_workers, visualise_frames=args.visualise_frames,
-                                percentile=args.max_p, view=args.view, min_expansion=args.min_expansion)
+                                percentile=args.max_p, view=args.view, min_expansion=args.min_expansion,
+                                num_rand_frames=args.num_rand_frames)
     if args.weight_loss:
         class_weights = torch.tensor(train_dataset.class_weights, dtype=torch.float).to(device)
     else:
@@ -529,7 +535,7 @@ def main():
     valid_dataset = EchoDataset(valid_index_file_path, label_path, videos_dir=args.videos_dir, cache_dir=args.cache_dir,
                                 transform=valid_transforms, scaling_factor=args.scaling_factor, procs=args.num_workers,
                                 visualise_frames=args.visualise_frames, percentile=args.max_p, view=args.view,
-                                min_expansion=args.min_expansion)
+                                min_expansion=args.min_expansion, num_rand_frames=args.num_rand_frames)
     # For the data loader, if only use 1 worker, set it to 0, so data is loaded on the main process
     num_workers = (0 if args.num_workers == 1 else args.num_workers)
 

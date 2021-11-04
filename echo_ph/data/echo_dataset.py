@@ -27,7 +27,7 @@ def load_and_process_video(video_path):
 class EchoDataset(Dataset):
     def __init__(self, index_file_path, label_file_path, videos_dir=None, cache_dir=None,
                  transform=None, scaling_factor=0.5, procs=3, visualise_frames=False, percentile=90, view='KAPAP',
-                 min_expansion=False):
+                 min_expansion=False, num_rand_frames=None):
         """
         Dataset for echocardiogram processing and classification in PyTorch.
         :param index_file_path: Path to a numpy file, listing all sample names to use in this dataset.
@@ -38,6 +38,9 @@ class EchoDataset(Dataset):
         :param scaling_factor: What scaling factor cached videos have. If using raw videos, scaling factor is not used.
         :param procs: How many processes to use for processing this dataset.
         :param visualise_frames: If visualise frames during training (after transformation)
+        :param view: What model view
+        :param min_expansion: If True, then pick minimum expansion frames instead of maximum expansion frames
+        :param num_rand_frames: If None, get min/max expansion frames. Else, set to numner of random frames to pick per video
         """
 
         self.frames = []
@@ -54,6 +57,7 @@ class EchoDataset(Dataset):
         self.scaling_factor = scaling_factor
         self.max_percentile = percentile
         self.min_expansion = min_expansion
+        self.num_rand_frames = num_rand_frames
         self.view = view
         self.view_to_segmodel_view = {  # When training on given view, what segmentation pretrained model view to use
             'KAPAP': 'psax',
@@ -95,29 +99,34 @@ class EchoDataset(Dataset):
         if not os.path.exists(curr_video_path):
             print(f'Skipping sample {sample}, as the video path {curr_video_path} does not exist')
             return None, None, None
-        try:  # Try to get segmentations
-            sample_w_ending = str(sample) + self.view
-            # Todo: Generalise segm result dir
-            segm = SegmentationAnalyser(sample_w_ending, os.path.join('segmented_results', str(self.scaling_factor)),
-                                        model_view=self.view_to_segmodel_view[self.view])
-        except:
-            print(f'Skipping sample {sample}, as the segmented results for it does not exist')
-            return None, None, None
 
         # === Get labels ===
         with open(self.label_path, 'rb') as label_file:
             all_labels = pickle.load(label_file)
         label = all_labels[sample]
 
-        # === Get max expansion frames ===
+        # === Get video ==
         if self.cache_dir is None:  # load raw video and process
             segmented_video = load_and_process_video(curr_video_path)
         else:  # load already processed numpy video
             segmented_video = np.load(curr_video_path)
-        max_exp_frame_nrs = segm.extract_max_percentile_frames(percentile=self.max_percentile,
+
+        # === Get frames for video ===
+        if self.num_rand_frames is None: # Get max or min expansion frames, acc. to percentile
+            try:  # Try to get segmentations
+                sample_w_ending = str(sample) + self.view
+                # Todo: Generalise segm result dir
+                segm = SegmentationAnalyser(sample_w_ending, os.path.join('segmented_results', str(self.scaling_factor)),
+                                            model_view=self.view_to_segmodel_view[self.view])
+                frame_nrs = segm.extract_max_percentile_frames(percentile=self.max_percentile,
                                                                min_exp=self.min_expansion)
-        max_exp_frames = segmented_video[max_exp_frame_nrs]
-        sample_names = [str(sample) + '_' + str(fram_nr) for fram_nr in max_exp_frame_nrs]
+            except:
+                print(f'Skipping sample {sample}, as the segmented results for it does not exist')
+                return None, None, None
+        else:
+            frame_nrs = np.random.randint(0, len(segmented_video), self.num_rand_frames)
+        max_exp_frames = segmented_video[frame_nrs]
+        sample_names = [str(sample) + '_' + str(fram_nr) for fram_nr in frame_nrs]
         return max_exp_frames, label, sample_names
 
     def __len__(self):
