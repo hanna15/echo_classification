@@ -135,7 +135,7 @@ class EchoDataset(Dataset):
                                             model_view=self.view_to_segmodel_view[self.view])
                 frame_nrs = segm.extract_max_percentile_frames(percentile=self.max_percentile,
                                                                min_exp=self.min_expansion)
-                frames = segmented_video[frame_nrs]
+            frames = segmented_video[frame_nrs]
 
         sample_names = [str(sample) + '_' + str(fram_nr) for fram_nr in frame_nrs]
         return frames, label, sample_names
