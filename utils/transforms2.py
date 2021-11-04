@@ -180,10 +180,13 @@ class Normalize():
     Standardize input image
     """
 
+    def __init__(self, max_val=255.):
+        self.max_val = max_val
+
     def __call__(self, sample):
         sample, p_id = sample
-        return sample.float() / 3., p_id
-        # return sample.float() / 255., p_id
+        return sample.float() / self.max_val, p_id
+
 
 
 class SaltPepperNoise():
@@ -479,7 +482,8 @@ def get_transforms(
         augment=2,
         with_pid=False,
         crop_to_corner=False,
-        dataset_orig_img_scale=0.25
+        dataset_orig_img_scale=0.25,
+        segm_mask_only=False
 ):
     """
     Compose a set of prespecified transformation using the torchvision transform compose class
@@ -490,15 +494,16 @@ def get_transforms(
     corner_path = os.path.expanduser(os.path.join('~', '.echo-net', 'mask_corners', subset + view_set))
     return transforms.Compose(
         [
-            # HistEq(),
+            HistEq() if not segm_mask_only else Identity(),
             ConvertToTensor(),
-            Normalize(),
-            # CropToCorners(mask_path, corner_path, index_file_path, orig_img_scale=dataset_orig_img_scale, fold=fold,
-            #              view=view) if crop_to_corner else Identity(),
+            Normalize(max_val=3.0) if segm_mask_only else Normalize(),
+            CropToCorners(mask_path, corner_path, index_file_path, orig_img_scale=dataset_orig_img_scale, fold=fold,
+                          view=view) if crop_to_corner else Identity(),
             Resize(resize, return_pid=(with_pid or augment)),
-            # Augment(mask_path, index_file_path, orig_img_scale=dataset_orig_img_scale, size=resize, return_pid=with_pid,
-            #        fold=fold, valid=valid, view=view, aug_type=augment) if augment != 0 else Identity(),
-            # RandomNoise() if noise else Identity()
+            Augment(mask_path, index_file_path, orig_img_scale=dataset_orig_img_scale, size=resize, return_pid=with_pid,
+                    fold=fold, valid=valid, view=view, aug_type=augment) if augment != 0 and not segm_mask_only
+            else Identity(),
+            RandomNoise() if noise and not segm_mask_only else Identity()
         ]
     )
 
