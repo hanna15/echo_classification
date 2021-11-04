@@ -10,11 +10,10 @@ from functools import partial
 import torchvision.transforms.functional as F
 from sympy import Line, Circle
 
-# Imports for mask geneation
+# Imports for mask generation
 from scipy.spatial import ConvexHull
 import multiprocessing as mp
 FILL_VAL = 0.3
-
 TORCH_SEED = 0
 torch.manual_seed(TORCH_SEED)  # Fix a seed, to increase reproducibility
 torch.cuda.manual_seed(TORCH_SEED)
@@ -183,7 +182,8 @@ class Normalize():
 
     def __call__(self, sample):
         sample, p_id = sample
-        return sample.float() / 255., p_id
+        return sample.float() / 3., p_id
+        # return sample.float() / 255., p_id
 
 
 class SaltPepperNoise():
@@ -490,15 +490,15 @@ def get_transforms(
     corner_path = os.path.expanduser(os.path.join('~', '.echo-net', 'mask_corners', subset + view_set))
     return transforms.Compose(
         [
-            HistEq(),
+            # HistEq(),
             ConvertToTensor(),
             Normalize(),
-            CropToCorners(mask_path, corner_path, index_file_path, orig_img_scale=dataset_orig_img_scale, fold=fold,
-                          view=view) if crop_to_corner else Identity(),
+            # CropToCorners(mask_path, corner_path, index_file_path, orig_img_scale=dataset_orig_img_scale, fold=fold,
+            #              view=view) if crop_to_corner else Identity(),
             Resize(resize, return_pid=(with_pid or augment)),
-            Augment(mask_path, index_file_path, orig_img_scale=dataset_orig_img_scale, size=resize, return_pid=with_pid,
-                    fold=fold, valid=valid, view=view, aug_type=augment) if augment != 0 else Identity(),
-            RandomNoise() if noise else Identity()
+            # Augment(mask_path, index_file_path, orig_img_scale=dataset_orig_img_scale, size=resize, return_pid=with_pid,
+            #        fold=fold, valid=valid, view=view, aug_type=augment) if augment != 0 else Identity(),
+            # RandomNoise() if noise else Identity()
         ]
     )
 
