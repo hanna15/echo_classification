@@ -68,9 +68,7 @@ def main():
 
     else:  # print each frame in video with given sampling period
         for i in range(0, len(video), args.sampling_period):
-            plt.imshow(video[i])
-            plt.title('frame nr' + str(i))
-            plt.show()
+            show_frame(video[i], 'frame nr' + str(i))
 
 
 if __name__ == '__main__':
