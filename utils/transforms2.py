@@ -27,6 +27,26 @@ torch.backends.cudnn.benchmark = False
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.enabled = False
 
+from PIL import Image, ImageChops
+
+
+class Trim():
+
+    def __init__(self, border=0):
+        self.border = border
+        self.to_pil = transforms.ToPILImage()
+        self.to_tensor = transforms.ToTensor()
+
+    def __call__(self, sample):
+        sample, p_id = sample
+        _, W, H = sample.size()
+        pimg = self.to_pil(sample)
+        bg = Image.new(pimg.mode, (W, H), self.border)
+        diff = ImageChops.difference(pimg, bg)
+        bbox = diff.getbbox()
+        if bbox:
+            return self.to_tensor(pimg.crop(bbox)), p_id
+
 
 class CropToCorners():
     """
@@ -515,7 +535,8 @@ def get_transforms(
             ConvertToTensor(),
             Normalize(max_val=3.0) if segm_mask_only else Normalize(),
             CropToCorners(mask_path, corner_path, index_file_path, orig_img_scale=dataset_orig_img_scale, fold=fold,
-                          view=view) if crop_to_corner else Identity(),
+                          view=view) if crop_to_corner and not segm_mask_only else Identity(),
+            Trim() if crop_to_corner and segm_mask_only else Identity(),
             Resize(resize, return_pid=(with_pid or augment)),
             Augment(mask_path, index_file_path, orig_img_scale=dataset_orig_img_scale, size=resize, return_pid=with_pid,
                     fold=fold, valid=valid, view=view, aug_type=augment) if augment != 0 and not segm_mask_only
