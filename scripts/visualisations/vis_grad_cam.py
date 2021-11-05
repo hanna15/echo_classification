@@ -77,13 +77,16 @@ def get_save_grad_cam_images(data_loader, model, cam, device, subset='valid'):
         grayscale_cam = cam(input_tensor=img,
                             target_category=target_category)
         img = np.stack((img.squeeze().cpu(),) * 3, axis=-1)  # create a 3-channel image from the grayscale img
-        cam_image = show_cam_on_image(img, grayscale_cam[0])
-        if args.show:
-            plt.imshow(cam_image)
-            plt.title(title)
-            plt.show()
-        if args.save:
-            cv2.imwrite(os.path.join(output_dir, title), cam_image)
+        try:
+            cam_image = show_cam_on_image(img, grayscale_cam[0])
+            if args.show:
+                plt.imshow(cam_image)
+                plt.title(title)
+                plt.show()
+            if args.save:
+                cv2.imwrite(os.path.join(output_dir, title), cam_image)
+        except:
+            print(f'failed for sample {sample_name}, max is {img.max()}, min is {img.min()}')
 
 
 def main():
