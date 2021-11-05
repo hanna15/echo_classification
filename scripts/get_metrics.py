@@ -52,7 +52,8 @@ def get_scores_for_fold(fold_targets, fold_preds, fold_samples):
     video_f1 = f1_score(fold_targets_per_video, fold_preds_per_video, average='macro')
     video_f1_1s = f1_score(fold_targets_per_video, fold_preds_per_video, average='binary')
     video_f1_0s = f1_score(fold_targets_per_video, fold_preds_per_video, pos_label=0, average='binary')
-    return frame_roc_auc, video_roc_auc, video_f1, video_f1_1s, video_f1_0s, video_confidence_interval
+    fold_video_ci = np.mean(video_confidence_interval)
+    return frame_roc_auc, video_roc_auc, video_f1, video_f1_1s, video_f1_0s, fold_video_ci
 
 
 def get_all_results(res_base_dir='raw_results', metric_res_dir='results', get_clf_report=False):
