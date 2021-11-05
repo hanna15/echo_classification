@@ -40,17 +40,19 @@ def get_scores_for_fold(fold_targets, fold_preds, fold_samples):
             res_per_video[vid_id] = (t, [p])  # first initialise it
     fold_targets_per_video = []
     fold_preds_per_video = []
+    video_confidence_interval = []
     # Get a single prediction per video
     for res in res_per_video.values():
         ratio_pred_1 = np.sum(res[1]) / len(res[1])
         pred = 1 if ratio_pred_1 >= 0.5 else 0  # Change to a single pred value per video
+        video_confidence_interval.append(ratio_pred_1 if pred == 1 else (1 - ratio_pred_1))
         fold_preds_per_video.append(pred)
         fold_targets_per_video.append(res[0])
     video_roc_auc = roc_auc_score(fold_targets_per_video, fold_preds_per_video)
     video_f1 = f1_score(fold_targets_per_video, fold_preds_per_video, average='macro')
     video_f1_1s = f1_score(fold_targets_per_video, fold_preds_per_video, average='binary')
     video_f1_0s = f1_score(fold_targets_per_video, fold_preds_per_video, pos_label=0, average='binary')
-    return frame_roc_auc, video_roc_auc, video_f1, video_f1_1s, video_f1_0s
+    return frame_roc_auc, video_roc_auc, video_f1, video_f1_1s, video_f1_0s, video_confidence_interval
 
 
 def get_all_results(res_base_dir='raw_results', metric_res_dir='results', get_clf_report=False):
@@ -68,14 +70,16 @@ def get_all_results(res_base_dir='raw_results', metric_res_dir='results', get_cl
             'Video ROC_AUC': [],
             'Video F1 (macro)': [],
             'Video F1, pos': [],
-            'Video F1, neg': []
+            'Video F1, neg': [],
+            'Video CI': []
         }
         train_metrics = {
             'Frame ROC_AUC': [],
             'Video ROC_AUC': [],
             'Video F1 (macro)': [],
             'Video F1, pos': [],
-            'Video F1, neg': []
+            'Video F1, neg': [],
+            'Video CI': []
         }
         epochs = []
         for fold_model_name in sorted(os.listdir(os.path.join(res_base_dir, run_name))):
@@ -89,24 +93,26 @@ def get_all_results(res_base_dir='raw_results', metric_res_dir='results', get_cl
             fold_train_targets = np.load(os.path.join(fold_dir, 'train_targets.npy'))
             fold_train_samples = np.load(os.path.join(fold_dir, 'train_samples.npy'))
 
-            frame_roc_auc, video_roc_auc, video_f1, video_f1_1, video_f1_0 = \
+            frame_roc_auc, video_roc_auc, video_f1, video_f1_1, video_f1_0, video_ci = \
                 get_scores_for_fold(fold_val_targets, fold_val_preds, fold_val_samples)
             val_metrics['Frame ROC_AUC'].append(frame_roc_auc)
             val_metrics['Video ROC_AUC'].append(video_roc_auc)
             val_metrics['Video F1 (macro)'].append(video_f1)
             val_metrics['Video F1, pos'].append(video_f1_1)
             val_metrics['Video F1, neg'].append(video_f1_0)
+            val_metrics['Video CI'].append(video_ci)
 
             val_preds.extend(fold_val_preds)
             val_targets.extend(fold_val_targets)
 
-            frame_roc_auc, video_roc_auc, video_f1, video_f1_1, video_f1_0 = \
+            frame_roc_auc, video_roc_auc, video_f1, video_f1_1, video_f1_0, video_ci = \
                 get_scores_for_fold(fold_train_targets, fold_train_preds, fold_train_samples)
             train_metrics['Frame ROC_AUC'].append(frame_roc_auc)
             train_metrics['Video ROC_AUC'].append(video_roc_auc)
             train_metrics['Video F1 (macro)'].append(video_f1)
             train_metrics['Video F1, pos'].append(video_f1_1)
             train_metrics['Video F1, neg'].append(video_f1_0)
+            train_metrics['Video CI'].append(video_ci)
             train_preds.extend(fold_train_preds)
             train_targets.extend(fold_train_targets)
 
