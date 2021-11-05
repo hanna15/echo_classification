@@ -420,7 +420,7 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
                 epoch_valid_samples.extend(val_sample_names)
                 epoch_valid_targets.extend(val_targets)
                 # epoch_valid_preds.extend(torch.max(val_out, dim=1)[1])
-                epoch_valid_outs.extend(val_out.detach().numpy())
+                epoch_valid_outs.extend(val_out.cpu().detach().numpy())
                 epoch_valid_loss += val_loss.item() * args.batch_size
 
         scheduler.step(epoch_valid_loss / valid_len)  # Update learning rate scheduler
