@@ -13,7 +13,10 @@ from sympy import Line, Circle
 # Imports for mask generation
 from scipy.spatial import ConvexHull
 import multiprocessing as mp
-FILL_VAL = 0.3
+# FILL_VAL = 0.3
+
+FILL_VAL = 0
+
 TORCH_SEED = 0
 torch.manual_seed(TORCH_SEED)  # Fix a seed, to increase reproducibility
 torch.cuda.manual_seed(TORCH_SEED)
@@ -325,6 +328,20 @@ class Resize():
             return self.transform(sample)
 
 
+class AugmentSegMasks():
+    def __init__(self):
+        self.augments = [transforms.RandomRotation(degrees=15),
+                         transforms.RandomAffine(degrees=(0, 0), translate=(0.1, 0.1)),
+                         RandomResize()]
+
+    def __call__(self, sample):
+        # Get sample and corresponding mask
+        sample, p_id = sample
+        for aug in self.augments:
+            sample = aug(sample)
+        return sample
+
+
 class Augment():
     """
     Randomly perform a range of data augmentation
@@ -424,7 +441,7 @@ class Augment():
             return sample
 
         # In augment type 4, 10 % of images don't get any augmentation
-        if self.type == 1 and torch.rand(1) < 0.1:
+        if self.type == 4 and torch.rand(1) < 0.1:
             if self.return_pid:
                 return sample, p_id
             return sample
@@ -503,6 +520,7 @@ def get_transforms(
             Augment(mask_path, index_file_path, orig_img_scale=dataset_orig_img_scale, size=resize, return_pid=with_pid,
                     fold=fold, valid=valid, view=view, aug_type=augment) if augment != 0 and not segm_mask_only
             else Identity(),
+            AugmentSegMasks() if augment != 0 and segm_mask_only else Identity(),
             RandomNoise() if noise and not segm_mask_only else Identity()
         ]
     )
