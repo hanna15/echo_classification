@@ -193,6 +193,8 @@ def get_run_name():
         run_name += 'MIN'
     if args.num_rand_frames is not None:
         run_name += 'rand_n' + str(args.num_rand_frames)
+    if args.crop:
+        run_name += '_crop'
     return run_name
 
 
