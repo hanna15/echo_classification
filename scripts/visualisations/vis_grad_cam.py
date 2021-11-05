@@ -40,6 +40,7 @@ parser.add_argument('--save', action='store_true', help='If to save grad cam ima
 parser.add_argument('--show', action='store_true', help='If to show grad cam images')
 parser.add_argument('--train_set', action='store_true', help='Also get grad cam for the images in the training set, '
                                                              'with random augmentation (type 3)')
+parser.add_argument('--segm_only', action='store_true', help='Only evaluate on the segmentation masks')
 
 
 def get_data_loader(train=False):
@@ -51,11 +52,11 @@ def get_data_loader(train=False):
     aug_type = 3 if train else 0
     transforms = get_transforms(index_file_path, dataset_orig_img_scale=args.scale, resize=224,
                                 augment=aug_type, fold=args.fold, valid=(not train), view=args.view,
-                                crop_to_corner=args.crop)
+                                crop_to_corner=args.crop, segm_mask_only=args.segm_only)
     dataset = EchoDataset(index_file_path, label_path, cache_dir=args.cache_dir,
                           transform=transforms, scaling_factor=args.scale, procs=args.n_workers,
                           percentile=args.max_p, view=args.view, min_expansion=args.min_expansion,
-                          num_rand_frames=args.num_rand_frames)
+                          num_rand_frames=args.num_rand_frames, segm_masks=args.segm_only)
     data_loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=args.n_workers)
     return data_loader
 
