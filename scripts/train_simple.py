@@ -483,8 +483,8 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
                                 # save_model_and_res(model, run_name, target_lst, pred_lst, targ_lst_valid,
                                 #                    pred_lst_valid, epoch_samples, epoch_valid_samples,
                                 #                    epoch=epoch, fold=args.fold)
-                                save_model_and_res(model, run_name, target_lst, epoch_valid_preds, targ_lst_valid,
-                                                   epoch_valid_preds, epoch_samples, epoch_valid_samples,
+                                save_model_and_res(model, run_name, target_lst, epoch_outs, targ_lst_valid,
+                                                   epoch_valid_outs, epoch_samples, epoch_valid_samples,
                                                    epoch=epoch, fold=args.fold)
                             saved_model_this_round = True
                         else:
