@@ -405,7 +405,7 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
             epoch_samples.extend(sample_names)
             epoch_targets.extend(targets)
             # epoch_preds.extend(torch.max(out, dim=1)[1])
-            epoch_outs.extend(out.detach().numpy())
+            epoch_outs.extend(out.cpu().detach().numpy())
             epoch_loss += loss.item() * args.batch_size
             optimizer.zero_grad()
             loss.backward()
