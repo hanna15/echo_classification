@@ -44,8 +44,9 @@ def get_scores_for_fold(fold_targets, fold_preds, fold_samples):
     # Get a single prediction per video
     for res in res_per_video.values():
         ratio_pred_1 = np.sum(res[1]) / len(res[1])
+        ratio_pred_0 = 1 - ratio_pred_1
         pred = 1 if ratio_pred_1 >= 0.5 else 0  # Change to a single pred value per video
-        video_confidence_interval.append(ratio_pred_1 if pred == 1 else (1 - ratio_pred_1))
+        video_confidence_interval.append(ratio_pred_1 if pred == 1 else ratio_pred_0)
         fold_preds_per_video.append(pred)
         fold_targets_per_video.append(res[0])
     video_roc_auc = roc_auc_score(fold_targets_per_video, fold_preds_per_video)
