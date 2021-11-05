@@ -1,10 +1,11 @@
 import numpy as np
 import os
 import pandas as pd
+import torch
 import csv
-from sklearn.metrics import roc_auc_score, classification_report, f1_score, balanced_accuracy_score
+from sklearn.metrics import roc_auc_score, classification_report, f1_score, balanced_accuracy_score, RocCurveDisplay, roc_curve
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
-
+from matplotlib import pyplot as plt
 parser = ArgumentParser(
     description='Get metrics',
     formatter_class=ArgumentDefaultsHelpFormatter)
@@ -12,6 +13,23 @@ parser = ArgumentParser(
 parser.add_argument('--res_base_dir', type=str, default='results')
 parser.add_argument('--metric_res_dir', type=str, default='metric_results')
 parser.add_argument('--cr',  action='store_true', help='Set this flag to save also classification report per run')
+
+val_metrics = {
+    'Frame ROC_AUC': [],
+    'Video ROC_AUC': [],
+    'Video F1 (macro)': [],
+    'Video F1, pos': [],
+    'Video F1, neg': [],
+    'Video CI': []
+}
+train_metrics = {
+    'Frame ROC_AUC': [],
+    'Video ROC_AUC': [],
+    'Video F1 (macro)': [],
+    'Video F1, pos': [],
+    'Video F1, neg': [],
+    'Video CI': []
+}
 
 
 def get_save_classification_report(targets, preds, file_name, metric_res_dir='results', epochs=None):
@@ -33,13 +51,18 @@ def get_scores_for_fold(fold_targets, fold_preds, fold_samples):
     # Get scores per video
     res_per_video = {}  # format is {'vid_id': target, [predicted frames]}
     for t, p, s in zip(fold_targets, fold_preds, fold_samples):
+        if isinstance(p, list):  # Then we need to take the max to get a proper prediction
+            pred = np.argmax(p)
+        else:
+            pred = p
         vid_id = s.split('_')[0]
         if vid_id in res_per_video:
-            res_per_video[vid_id][1].append(p)  # append all predictions for the given video
+            res_per_video[vid_id][1].append(pred)  # append all predictions for the given video
         else:
-            res_per_video[vid_id] = (t, [p])  # first initialise it
+            res_per_video[vid_id] = (t, [pred])  # first initialise it
     fold_targets_per_video = []
     fold_preds_per_video = []
+    video_probs = []
     video_confidence_interval = []
     # Get a single prediction per video
     for res in res_per_video.values():
@@ -47,6 +70,7 @@ def get_scores_for_fold(fold_targets, fold_preds, fold_samples):
         ratio_pred_0 = 1 - ratio_pred_1
         pred = 1 if ratio_pred_1 >= 0.5 else 0  # Change to a single pred value per video
         video_confidence_interval.append(ratio_pred_1 if pred == 1 else ratio_pred_0)
+        video_probs.append(ratio_pred_1)
         fold_preds_per_video.append(pred)
         fold_targets_per_video.append(res[0])
     video_roc_auc = roc_auc_score(fold_targets_per_video, fold_preds_per_video)
@@ -54,7 +78,8 @@ def get_scores_for_fold(fold_targets, fold_preds, fold_samples):
     video_f1_1s = f1_score(fold_targets_per_video, fold_preds_per_video, average='binary')
     video_f1_0s = f1_score(fold_targets_per_video, fold_preds_per_video, pos_label=0, average='binary')
     fold_video_ci = np.mean(video_confidence_interval)
-    return frame_roc_auc, video_roc_auc, video_f1, video_f1_1s, video_f1_0s, fold_video_ci
+    return frame_roc_auc, video_roc_auc, video_f1, video_f1_1s, video_f1_0s, fold_video_ci, fold_targets_per_video, \
+           video_probs
 
 
 def get_all_results(res_base_dir='raw_results', metric_res_dir='results', get_clf_report=False):
@@ -62,28 +87,19 @@ def get_all_results(res_base_dir='raw_results', metric_res_dir='results', get_cl
     all_runs = os.listdir(res_base_dir)
     val_data = [[] for _ in range(len(all_runs))]  # list of lists, for each run
     train_data = [[] for _ in range(len(all_runs))]  # list of lists, for each run
+    colorMap = plt.get_cmap('jet', len(all_runs))
     for i, run_name in enumerate(all_runs):
         val_preds = []
         val_targets = []
         train_preds = []
         train_targets = []
-        val_metrics = {
-            'Frame ROC_AUC': [],
-            'Video ROC_AUC': [],
-            'Video F1 (macro)': [],
-            'Video F1, pos': [],
-            'Video F1, neg': [],
-            'Video CI': []
-        }
-        train_metrics = {
-            'Frame ROC_AUC': [],
-            'Video ROC_AUC': [],
-            'Video F1 (macro)': [],
-            'Video F1, pos': [],
-            'Video F1, neg': [],
-            'Video CI': []
-        }
+        val_metrics.update({}.fromkeys(val_metrics, []))  # Reset metrics for new run
+        train_metrics.update({}.fromkeys(train_metrics, []))  # Reset metrics for new run
         epochs = []
+        vid_targets = []
+        vid_val_targets = []
+        vid_val_probs = []
+        vid_probs = []
         for fold_model_name in sorted(os.listdir(os.path.join(res_base_dir, run_name))):
             epoch = int(fold_model_name.rsplit('_e', 1)[-1])
             epochs.append(epoch)
@@ -95,7 +111,7 @@ def get_all_results(res_base_dir='raw_results', metric_res_dir='results', get_cl
             fold_train_targets = np.load(os.path.join(fold_dir, 'train_targets.npy'))
             fold_train_samples = np.load(os.path.join(fold_dir, 'train_samples.npy'))
 
-            frame_roc_auc, video_roc_auc, video_f1, video_f1_1, video_f1_0, video_ci = \
+            frame_roc_auc, video_roc_auc, video_f1, video_f1_1, video_f1_0, video_ci, vid_target, video_prob = \
                 get_scores_for_fold(fold_val_targets, fold_val_preds, fold_val_samples)
             val_metrics['Frame ROC_AUC'].append(frame_roc_auc)
             val_metrics['Video ROC_AUC'].append(video_roc_auc)
@@ -104,10 +120,12 @@ def get_all_results(res_base_dir='raw_results', metric_res_dir='results', get_cl
             val_metrics['Video F1, neg'].append(video_f1_0)
             val_metrics['Video CI'].append(video_ci)
 
+            vid_val_targets.extend(vid_target)
+            vid_val_probs.extend(video_prob)
             val_preds.extend(fold_val_preds)
             val_targets.extend(fold_val_targets)
 
-            frame_roc_auc, video_roc_auc, video_f1, video_f1_1, video_f1_0, video_ci = \
+            frame_roc_auc, video_roc_auc, video_f1, video_f1_1, video_f1_0, video_ci, vid_target, video_prob = \
                 get_scores_for_fold(fold_train_targets, fold_train_preds, fold_train_samples)
             train_metrics['Frame ROC_AUC'].append(frame_roc_auc)
             train_metrics['Video ROC_AUC'].append(video_roc_auc)
@@ -117,6 +135,8 @@ def get_all_results(res_base_dir='raw_results', metric_res_dir='results', get_cl
             train_metrics['Video CI'].append(video_ci)
             train_preds.extend(fold_train_preds)
             train_targets.extend(fold_train_targets)
+            vid_targets.extend(vid_target)
+            vid_probs.extend(video_prob)
 
         # Save Results
         if get_clf_report:
@@ -124,6 +144,14 @@ def get_all_results(res_base_dir='raw_results', metric_res_dir='results', get_cl
                                            metric_res_dir=metric_res_dir, epochs=epochs)
             get_save_classification_report(train_targets, train_preds, f'train_report_{run_name}.csv',
                                            metric_res_dir=metric_res_dir, epochs=epochs)
+
+        # fpr1, tpr1, thresh1 = roc_curve(val_targets, val_preds, pos_label=1)
+        fpr1, tpr1, thresh1 = roc_curve(vid_val_targets, vid_val_probs, pos_label=1)
+        print(thresh1)
+        plt.plot(fpr1, tpr1, color=colorMap(i/len(all_runs)), label=run_name, marker='.')
+
+        # display = RocCurveDisplay.from_predictions(val_targets, val_preds).plot()
+        # display.plot(name=run_name)
 
         for metric_values in val_metrics.values():
             mean = np.mean(metric_values)
@@ -140,7 +168,12 @@ def get_all_results(res_base_dir='raw_results', metric_res_dir='results', get_cl
     df_val = pd.DataFrame(val_data, index=os.listdir(res_base_dir), columns=val_metrics.keys())
     df_train = pd.DataFrame(train_data, index=os.listdir(res_base_dir), columns=train_metrics.keys())
     df_final = pd.concat([df_val, df_train], keys=['val', 'train'], axis=1)
+    random_probs = [0 for i in range(len(val_targets))]
+    p_fpr, p_tpr, _ = roc_curve(val_targets, random_probs, pos_label=1)
+    plt.plot(p_fpr, p_tpr, linestyle='--', color='blue', label='random')
     df_final.to_csv(os.path.join(metric_res_dir, 'summary.csv'), float_format='%.3f')
+    # plt.show()
+    plt.savefig('roc_auc_curve')
 
 
 def main():
