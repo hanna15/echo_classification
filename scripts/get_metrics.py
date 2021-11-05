@@ -49,9 +49,9 @@ def get_scores_for_fold(fold_targets, fold_preds, fold_samples):
     frame_roc_auc = roc_auc_score(fold_targets, fold_preds)
 
     # Get scores per video
-    res_per_video = {}  # format is {'vid_id': target, [predicted frames]}
+    res_per_video = {}  #is format is {'vid_id': target, [predicted frames]}
     for t, p, s in zip(fold_targets, fold_preds, fold_samples):
-        if isinstance(p, list):  # Then we need to take the max to get a proper prediction
+        if isinstance(p, (list, np.ndarray)) or torch.is_tensor(p):  # Then we need to take the max to get a proper prediction
             pred = np.argmax(p)
         else:
             pred = p
@@ -147,7 +147,7 @@ def get_all_results(res_base_dir='raw_results', metric_res_dir='results', get_cl
 
         # fpr1, tpr1, thresh1 = roc_curve(val_targets, val_preds, pos_label=1)
         fpr1, tpr1, thresh1 = roc_curve(vid_val_targets, vid_val_probs, pos_label=1)
-        print(thresh1)
+        # print(thresh1)
         plt.plot(fpr1, tpr1, color=colorMap(i/len(all_runs)), label=run_name, marker='.')
 
         # display = RocCurveDisplay.from_predictions(val_targets, val_preds).plot()
