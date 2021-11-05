@@ -134,6 +134,7 @@ parser.add_argument('--tb_dir', type=str, default='tb_runs_cv',
 parser.add_argument('--res_dir', type=str, default='results',
                     help='Name of base directory for results')
 parser.add_argument('--segm_masks', action='store_true', help='set this flag to train only on segmentation masks')
+parser.add_argument('--crop', action='store_true', help='set this flag to crop to corners')
 
 BASE_MODEL_DIR = 'models'
 
@@ -208,7 +209,7 @@ def get_metrics(outputs, targets, samples, prefix='', binary=False):
         outputs = outputs.cpu()
         targets = targets.cpu()
     if np.shape(outputs) != np.shape(targets):
-        preds = np.max(outputs, dim=1)
+        preds = np.argmax(outputs, axis=1)
     else:
         preds = outputs
 
@@ -263,6 +264,15 @@ def run_batch(batch, model, criterion=None, binary=False):
     targets = batch["label"].to(dev)
     sample_names = batch["sample_name"]
     outputs = model(input)
+    # out = []
+    # for _ in range(len(input)):
+    #     rand_decision = random.randint(0, 1)
+    #     if rand_decision == 1:
+    #         pred = [0, 1]
+    #     else:
+    #         pred = [1, 0]
+    #     out.append(pred)
+    # outputs = torch.tensor(out, dtype=torch.float32)
     # Get loss, if we are training
     if criterion:
         if binary:
@@ -379,10 +389,12 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
         epoch_loss = epoch_valid_loss = 0
         epoch_targets = []
         epoch_preds = []
+        epoch_outs = []
         epoch_samples = []
         epoch_valid_targets = []
         epoch_valid_preds = []
         epoch_valid_samples = []
+        epoch_valid_outs = []
 
         # TRAIN
         model.train()
@@ -390,7 +402,8 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
             loss, out, targets, sample_names = run_batch(train_batch, model, criterion, binary)
             epoch_samples.extend(sample_names)
             epoch_targets.extend(targets)
-            epoch_preds.extend(torch.max(out, dim=1)[1])
+            # epoch_preds.extend(torch.max(out, dim=1)[1])
+            epoch_outs.extend(out.detach().numpy())
             epoch_loss += loss.item() * args.batch_size
             optimizer.zero_grad()
             loss.backward()
@@ -404,18 +417,23 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
                 val_loss, val_out, val_targets, val_sample_names = run_batch(valid_batch, model, criterion, binary)
                 epoch_valid_samples.extend(val_sample_names)
                 epoch_valid_targets.extend(val_targets)
-                epoch_valid_preds.extend(torch.max(val_out, dim=1)[1])
+                # epoch_valid_preds.extend(torch.max(val_out, dim=1)[1])
+                epoch_valid_outs.extend(val_out.detach().numpy())
                 epoch_valid_loss += val_loss.item() * args.batch_size
 
         scheduler.step(epoch_valid_loss / valid_len)  # Update learning rate scheduler
 
         if epoch % args.log_freq == 0:  # log every xth epoch
             target_lst = [t.item() for t in epoch_targets]
-            pred_lst = [t.item() for t in epoch_preds]
+            # pred_lst = [t.item() for t in epoch_preds]
             targ_lst_valid = [t.item() for t in epoch_valid_targets]
-            pred_lst_valid = [t.item() for t in epoch_valid_preds]
-            epoch_metrics = get_metrics(pred_lst, target_lst, epoch_samples, prefix='train', binary=binary)
-            epoch_valid_metrics = get_metrics(pred_lst_valid, targ_lst_valid, epoch_valid_samples, prefix='valid', binary=binary)
+           #  pred_lst_valid = [t.item() for t in epoch_valid_preds]
+            #epoch_metrics = get_metrics(pred_lst, target_lst, epoch_samples, prefix='train', binary=binary)
+            #epoch_valid_metrics = get_metrics(pred_lst_valid, targ_lst_valid, epoch_valid_samples, prefix='valid',
+            #                                  binary=binary)
+            epoch_metrics = get_metrics(epoch_outs, target_lst, epoch_samples, prefix='train', binary=binary)
+            epoch_valid_metrics = get_metrics(epoch_valid_outs, targ_lst_valid, epoch_valid_samples, prefix='valid',
+                                              binary=binary)
             print('*** epoch:', epoch, '***')
             print('train_loss:', epoch_loss / data_len)
             print('valid loss:', epoch_valid_loss / valid_len)
@@ -425,7 +443,12 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
             for metric in epoch_valid_metrics:
                 print(metric, ":", epoch_valid_metrics[metric])
 
-            if not args.debug:  # log and save results
+            if args.debug:
+                vals, cnts = np.unique(target_lst, return_counts=True)
+                print('epoch target distribution')
+                for val, cnt in zip(vals, cnts):
+                    print(val, ':', cnt)
+            else:  # log and save results
                 log_dict = {
                     "epoch": epoch,
                     "lr": optimizer.param_groups[0]['lr'],  # Actual learning rate (changes because of scheduler)
@@ -455,8 +478,11 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
                             best_early_stops[i] = log_dict[eval_metric]  # update
                             num_val_fails = 0
                             if not saved_model_this_round:
-                                save_model_and_res(model, run_name, target_lst, pred_lst, targ_lst_valid,
-                                                   pred_lst_valid, epoch_samples, epoch_valid_samples,
+                                # save_model_and_res(model, run_name, target_lst, pred_lst, targ_lst_valid,
+                                #                    pred_lst_valid, epoch_samples, epoch_valid_samples,
+                                #                    epoch=epoch, fold=args.fold)
+                                save_model_and_res(model, run_name, target_lst, epoch_valid_preds, targ_lst_valid,
+                                                   epoch_valid_preds, epoch_samples, epoch_valid_samples,
                                                    epoch=epoch, fold=args.fold)
                             saved_model_this_round = True
                         else:
@@ -470,28 +496,12 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
                         print('== Early stop training after', num_val_fails,
                               'epochs without validation loss improvement')
                         break
-            else:
-                target_lst = [t.item() for t in epoch_targets]
-                vals, cnts = np.unique(target_lst, return_counts=True)
-                print('epoch target distribution')
-                for val, cnt in zip(vals, cnts):
-                    print(val, ':', cnt)
 
     if not args.debug:
         tb_writer.close()
 
 
 def main():
-    # TORCH_SEED = args.seed
-    # torch.manual_seed(TORCH_SEED)  # Fix a seed, to increase reproducibility
-    # torch.cuda.manual_seed(TORCH_SEED)
-    # torch.cuda.manual_seed_all(TORCH_SEED)
-    # np.random.seed(TORCH_SEED)
-    # random.seed(TORCH_SEED)
-    # torch.backends.cudnn.benchmark = False
-    # torch.backends.cudnn.deterministic = True
-    # torch.backends.cudnn.enabled = False
-
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Will be training on device', device)
     run_name = get_run_name()
@@ -518,13 +528,15 @@ def main():
     if args.augment and not args.load_model:  # All augmentations
         train_transforms = get_transforms(train_index_file_path, dataset_orig_img_scale=args.scaling_factor, resize=224,
                                           augment=args.aug_type, fold=args.fold, valid=False, view=args.view,
-                                          crop_to_corner=False, segm_mask_only=args.segm_masks)
+                                          crop_to_corner=args.crop, segm_mask_only=args.segm_masks)
     else:
         train_transforms = get_transforms(train_index_file_path, dataset_orig_img_scale=args.scaling_factor, resize=224,
-                                          augment=0, fold=args.fold, valid=False, view=args.view, crop_to_corner=False,
+                                          augment=0, fold=args.fold, valid=False, view=args.view,
+                                          crop_to_corner=args.crop,
                                           segm_mask_only=args.segm_masks)
     valid_transforms = get_transforms(valid_index_file_path, dataset_orig_img_scale=args.scaling_factor, resize=224,
-                                      augment=0, fold=args.fold, valid=True, view=args.view, crop_to_corner=False,
+                                      augment=0, fold=args.fold, valid=True, view=args.view,
+                                      crop_to_corner=args.crop,
                                       segm_mask_only=args.segm_masks)
 
     train_dataset = EchoDataset(train_index_file_path, label_path, videos_dir=args.videos_dir,
