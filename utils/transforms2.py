@@ -13,9 +13,9 @@ from sympy import Line, Circle
 # Imports for mask generation
 from scipy.spatial import ConvexHull
 import multiprocessing as mp
-# FILL_VAL = 0.3
+FILL_VAL = 0.3
 
-FILL_VAL = 0
+# FILL_VAL = 0
 
 TORCH_SEED = 0
 torch.manual_seed(TORCH_SEED)  # Fix a seed, to increase reproducibility
@@ -151,10 +151,11 @@ class RandResizePad():
     Randomly resize image to given scale and pad to arrive back at original scale
     """
 
-    def __init__(self, scale, pad_noise=False):
+    def __init__(self, scale, pad_noise=False, fill_val=FILL_VAL):
         assert scale < 1, "Scale must be greater than 1 for RandResizeCrop"
         self.pad_noise = pad_noise
         self.min_scale = scale
+        self.fill_val = fill_val
 
     def _pad_noise(self, sample, pad_up_down, pad_left_right):
         background = torch.rand(sample.shape) + sample
@@ -171,7 +172,7 @@ class RandResizePad():
         sample = transforms.functional.resize(sample, size=(int(rand_scale * H), int(rand_scale * W)))
         new_H, new_W = sample.shape[-2], sample.shape[-1]
         pad_up_down, pad_left_right = (H - new_H) // 2, (W - new_W) // 2
-        sample = transforms.functional.pad(sample, padding=(pad_left_right, pad_up_down), fill=FILL_VAL)
+        sample = transforms.functional.pad(sample, padding=(pad_left_right, pad_up_down), fill=self.fill_val)
         assert H - 2 <= sample.shape[-2] <= H + 2 and W - 2 <= sample.shape[
             -1] <= W + 2, f"Wrong dimension after padding, original was {(H, W)}, new is {sample.shape[-2:]}"
         if self.pad_noise:
@@ -185,12 +186,12 @@ class RandomResize():
     Randomly scale and crop or scale and pad the image
     """
 
-    def __init__(self, pad_noise=False):
+    def __init__(self, pad_noise=False, fill_val=FILL_VAL):
         self.transforms = [
             # RandResizeCrop(1.4),
             RandResizeCrop(1.2),
             # RandResizePad(0.6, pad_noise),
-            RandResizePad(0.8, pad_noise)
+            RandResizePad(0.8, pad_noise, fill_val)
         ]
 
     def __call__(self, sample):
@@ -352,7 +353,7 @@ class AugmentSegMasks():
     def __init__(self):
         self.augments = [transforms.RandomRotation(degrees=15),
                          transforms.RandomAffine(degrees=(0, 0), translate=(0.1, 0.1)),
-                         RandomResize()]
+                         RandomResize(fill_val=0)]  # only black-background
 
     def __call__(self, sample):
         # Get sample and corresponding mask
