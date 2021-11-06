@@ -134,7 +134,7 @@ def main():
                 video_id = int(video[:-video_ending_len])
                 if video_id not in label_dict:
                     print(f'video {video_id} does not have a legal label - skipping')
-                elif video_id in samples_test:  # Can't include samples that are already in test
+                elif args.test_ratio > 0 and video_id in samples_test:  # Can't include samples that are already in test
                     print(f'video {video_id} is in test set')
                 else:
                     label = label_dict[video_id]
