@@ -11,6 +11,7 @@ from torchvision.transforms import InterpolationMode
 import matplotlib.pyplot as plt
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from echo_ph.models import Unet
+from echo_ph.data.segmentation import model_dict, segmentation_labels
 
 """
 This script segments echo videos using pre-trained models from the echo-cv repo: bitbucket.org/rahuldeo/echocv
@@ -96,43 +97,6 @@ def save_segm_map(segm_frames, view, outpath, videofile):
 
 #TODO: Move dictionaries to a different file - maybe joint label file for segment and PH.
 
-model_dict = {
-            'psax': {
-                'label_dim': 4,
-                'restore_path': 'psax_45_20_all_model.ckpt-9300'
-            },
-            'plax': {
-                'label_dim': 7,
-                'restore_path': 'plax_45_20_all_model.ckpt-9600'
-            },
-            'a4c': {
-                'label_dim': 6,
-                'restore_path': 'a4c_45_20_all_model.ckpt-9000'
-            }
-}
-
-segmentation_labels = {
-            'plax': {
-                'lv': 1,  # left ventricle
-                'ivs': 2,  # interventricular septum
-                'la': 3,  # left atrium
-                'rv': 4,  # right ventricle
-                'pm': 5,  # papilliary muscle
-                'aor': 6  # aortic root (ascending)
-            },
-            'psax': {
-                'lv': 2,  # left ventricle
-                'rv': 3,  # right ventricle
-                'lv-o': 1  # left ventricle outer tissue
-            },
-            'a4c': {
-                'lv': 2, # left ventricle
-                'rv': 3, # right ventricle
-                'la': 4, # left atrium
-                'ra': 5, # right atrium
-                'lv-o': 1 # left ventricle outer tissue
-            }
-}
 
 # NN Parameters
 mean = 24
