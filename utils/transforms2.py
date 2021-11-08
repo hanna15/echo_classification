@@ -9,6 +9,7 @@ import numpy as np
 from functools import partial
 import torchvision.transforms.functional as F
 from sympy import Line, Circle
+from echo_ph.data.segmentation import segmentation_labels, our_view_to_segm_view
 
 # Imports for mask generation
 from scipy.spatial import ConvexHull
@@ -530,11 +531,15 @@ def get_transforms(
     view_set = '' if view == 'KAPAP' else f'_{view}'  # Only specify separately if not default
     mask_path = os.path.expanduser(os.path.join('~', '.echo-net', 'masks', subset + view_set))
     corner_path = os.path.expanduser(os.path.join('~', '.echo-net', 'mask_corners', subset + view_set))
+    max_val = 255.
+    if segm_mask_only:
+        segm_view = our_view_to_segm_view[view]
+        max_val = np.max(list(segmentation_labels[segm_view].values()))
     return transforms.Compose(
         [
             HistEq() if not segm_mask_only else Identity(),
             ConvertToTensor(),
-            Normalize(max_val=3.0) if segm_mask_only else Normalize(),
+            Normalize(max_val=max_val),
             CropToCorners(mask_path, corner_path, index_file_path, orig_img_scale=dataset_orig_img_scale, fold=fold,
                           view=view) if crop_to_corner and not segm_mask_only else Identity(),
             Trim() if crop_to_corner and segm_mask_only else Identity(),

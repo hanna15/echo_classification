@@ -6,6 +6,50 @@ import pickle
 from collections import defaultdict
 
 
+model_dict = {
+            'psax': {
+                'label_dim': 4,
+                'restore_path': 'psax_45_20_all_model.ckpt-9300'
+            },
+            'plax': {
+                'label_dim': 7,
+                'restore_path': 'plax_45_20_all_model.ckpt-9600'
+            },
+            'a4c': {
+                'label_dim': 6,
+                'restore_path': 'a4c_45_20_all_model.ckpt-9000'
+            }
+}
+
+segmentation_labels = {
+            'plax': {
+                'lv': 1,  # left ventricle
+                'ivs': 2,  # interventricular septum
+                'la': 3,  # left atrium
+                'rv': 4,  # right ventricle
+                'pm': 5,  # papilliary muscle
+                'aor': 6  # aortic root (ascending)
+            },
+            'psax': {
+                'lv': 2,  # left ventricle
+                'rv': 3,  # right ventricle
+                'lv-o': 1  # left ventricle outer tissue
+            },
+            'a4c': {
+                'lv': 2, # left ventricle
+                'rv': 3, # right ventricle
+                'la': 4, # left atrium
+                'ra': 5, # right atrium
+                'lv-o': 1 # left ventricle outer tissue
+            }
+}
+
+our_view_to_segm_view = {
+    'CV': 'a4c',
+    'KAPAP': 'psax'
+}
+
+
 class SegmentationAnalyser:
     def __init__(self, sample_name, segm_res_dir, model_view='psax'):
         dir = os.path.join(segm_res_dir, sample_name, model_view)
