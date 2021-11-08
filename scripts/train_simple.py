@@ -195,6 +195,8 @@ def get_run_name():
         run_name += 'rand_n' + str(args.num_rand_frames)
     if args.crop:
         run_name += '_crop'
+    if args.view != 'KAPAP':
+        run_name += '_' + args.view
     return run_name
 
 
