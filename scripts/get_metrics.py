@@ -110,12 +110,14 @@ def read_results(res_dir, subset='val'):
     outs = np.load(os.path.join(res_dir, f'{subset}_preds.npy'))
     targets = np.load(os.path.join(res_dir, f'{subset}_targets.npy'))
     samples = np.load(os.path.join(res_dir, f'{subset}_samples.npy'))
+    sm = torch.nn.Softmax(dim=-1)
     if len(outs) == 0:
         return None, None, None, None
     if isinstance(outs[0], (list, np.ndarray)):
         preds = np.argmax(outs, axis=1)
-        out_1s = outs[:, 1]  # extract output for class 1
-        probs = np.asarray(torch.softmax(torch.tensor(out_1s), dim=-1)) # get soft-maxed prob corresponding to class 1
+        # out_1s = outs[:, 1]  # extract output for class 1
+        soft_m = np.asarray(sm(torch.tensor(outs)))  # get soft-maxed prob corresponding to class 1
+        probs = soft_m[:, 1]
     else:
         preds = outs
         probs = None
