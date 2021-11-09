@@ -21,6 +21,7 @@ parser.add_argument('--out_dir', type=str, default='metric_results')
 parser.add_argument('--cr',  action='store_true', help='Set this flag to save also classification report per run')
 parser.add_argument('--train',  action='store_true', help='Set this flag to save also classification report per run')
 parser.add_argument('--only_plot',  action='store_true', help='Set this flag to only plot ROC_AUC')
+parser.add_argument('--plot_title',  type=str, default=None, help='title of ROC_AUC plot, if not default')
 
 metrics = ['Frame ROC_AUC', 'Video ROC_AUC', 'Video F1 (macro)', 'Video F1, pos', 'Video F1, neg', 'Video CI']
 
@@ -207,7 +208,8 @@ def main():
     # finalise roc_auc curve
     plt.xlabel("FPR")
     plt.ylabel("TPR")
-    plt.title('ROC_AUC Curve')
+    title = args.plot_title if args.plot_title is not None else 'ROC_AUC Curve'
+    plt.title(title)
     plt.legend(loc='lower right')
     plt.savefig(os.path.join(out_dir, 'val_roc_auc_curve'))
 
