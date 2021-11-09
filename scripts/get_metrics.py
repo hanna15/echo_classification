@@ -177,7 +177,8 @@ def main():
     os.makedirs(os.path.join(out_dir, 'classification_reports'), exist_ok=True)
     if res_dir is not None:
         all_runs = os.listdir(res_dir)
-        all_runs = [run for run in all_runs if os.path.isdir(os.path.join(res_dir, run))]
+        # so out-names can be ordered by sorted run names
+        all_runs = sorted([run for run in all_runs if os.path.isdir(os.path.join(res_dir, run))])
     else:
         all_runs = args.run_paths
     no_runs = len(all_runs)
