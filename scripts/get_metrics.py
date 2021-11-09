@@ -10,7 +10,13 @@ parser = ArgumentParser(
     description='Get metrics',
     formatter_class=ArgumentDefaultsHelpFormatter)
 # Paths, file name, model names, etc
-parser.add_argument('--res_dir', type=str, default='results')
+parser.add_argument('--res_dir', type=str, default=None,
+                    help='Set path of directory containing results for all desired runs - if this is desired.')
+parser.add_argument('--run_paths', type=str, default=None, nargs='+',
+                    help='Set paths to all individual runs that you wish to get results for - if this is desired.')
+parser.add_argument('--out_names', type=str, default=None, nargs='+',
+                    help='In the case of multiple res-paths, it is optional to provide a shorter name for each run, '
+                         'to be used for results')
 parser.add_argument('--out_dir', type=str, default='metric_results')
 parser.add_argument('--cr',  action='store_true', help='Set this flag to save also classification report per run')
 parser.add_argument('--train',  action='store_true', help='Set this flag to save also classification report per run')
@@ -99,7 +105,8 @@ def read_results(res_dir, subset='val'):
     return preds, targets, samples
 
 
-def get_metrics_for_run(res_base_dir, run_name, out_dir, col, subset='val', get_clf_report=False, first=False):
+def get_metrics_for_run(res_base_dir, run_name, out_dir, col, subset='val', get_clf_report=False, first=False,
+                        out_name=None):
     """
     Get list of metrics (in a string format) for current model / run, averaged over all fold, and per-video
     :param res_base_dir: Directory where results for this model are stored
@@ -109,6 +116,7 @@ def get_metrics_for_run(res_base_dir, run_name, out_dir, col, subset='val', get_
     :param subset: train or val
     :param get_clf_report: Whether or not to also get classification report (frame-wise)
     :param first: Set to true, if this is the first run
+    :param out_name: Shorter name to use for saving results for this run, if desired.
     :return: list of metric strings, to be written to csv
     """
     metric_dict = {key: [] for key in metrics}
@@ -117,13 +125,17 @@ def get_metrics_for_run(res_base_dir, run_name, out_dir, col, subset='val', get_
     vid_targets = []
     vid_probs = []
     epochs = []
-    for fold_model_name in sorted(os.listdir(os.path.join(res_base_dir, run_name))):
-        epoch = int(fold_model_name.rsplit('_e', 1)[-1])
+    res_path = os.path.join(res_base_dir, run_name) if res_base_dir is not None else run_name
+    # start with first fold, ignore .DS_store and other non-dir files
+    fold_paths = [os.path.join(res_path, fold_path) for fold_path in sorted(os.listdir(res_path)) if
+                  os.path.isdir(os.path.join(res_path, fold_path))]
+    for fold_dir in fold_paths:
+        epoch = int(fold_dir.rsplit('_e', 1)[-1])
         epochs.append(epoch)
-        fold_dir = os.path.join(res_base_dir, run_name, fold_model_name)
+        fold_dir = os.path.join(res_path, fold_dir)
         fold_preds, fold_targets, fold_samples = read_results(fold_dir, subset)
         if fold_preds is None:
-            print(f'failed for model {fold_model_name}')
+            print(f'failed for model {os.path.basename(fold_dir)}')
             continue
         results, vid_targ, vid_prob = get_metrics_for_fold(fold_targets, fold_preds, fold_samples)
         for metric, val in results.items():
@@ -137,13 +149,14 @@ def get_metrics_for_run(res_base_dir, run_name, out_dir, col, subset='val', get_
         get_save_classification_report(targets, preds, f'{subset}_report_{run_name}.csv',
                                        metric_res_dir=out_dir, epochs=epochs)
 
-    # Get ROC_AUC plot on a video-level, with thresholds referring to probability of frames
-    fpr1, tpr1, thresh1 = roc_curve(vid_targets, vid_probs, pos_label=1)
-    plt.plot(fpr1, tpr1, color=col, label=run_name[-25:], marker='.')
-
     if first:  # Plot random baseline, only 1x
         p_fpr, p_tpr, _ = roc_curve(targets, [0 for _ in range(len(targets))], pos_label=1)
         plt.plot(p_fpr, p_tpr, linestyle='--', color='blue', label='random')
+
+    # Get ROC_AUC plot on a video-level, with thresholds referring to probability of frames
+    run_label = out_name if out_name is not None else run_name[-25:]
+    fpr1, tpr1, thresh1 = roc_curve(vid_targets, vid_probs, pos_label=1)
+    plt.plot(fpr1, tpr1, color=col, label=run_label, marker='.')
 
     ret = []
     for metric_values in metric_dict.values():
@@ -160,21 +173,32 @@ def main():
     res_dir = args.res_dir
     out_dir = args.out_dir
     os.makedirs(os.path.join(out_dir, 'classification_reports'), exist_ok=True)
-    all_runs = os.listdir(res_dir)
+    if res_dir is not None:
+        all_runs = os.listdir(res_dir)
+        all_runs = [run for run in all_runs if os.path.isdir(os.path.join(res_dir, run))]
+    else:
+        all_runs = args.run_paths
     no_runs = len(all_runs)
     val_data = [[] for _ in range(no_runs)]  # list of lists, for each run
     train_data = [[] for _ in range(no_runs)]  # list of lists, for each run
     colorMap = plt.get_cmap('jet', no_runs)
     for i, run_name in enumerate(all_runs):
         col = colorMap(i/no_runs)
-        res = get_metrics_for_run(res_dir, run_name, out_dir, col, get_clf_report=args.cr, first=(i == 0))
+        out_name = None if args.out_names is None else args.out_names[i]
+        res = get_metrics_for_run(res_dir, run_name, out_dir, col, get_clf_report=args.cr, first=(i == 0),
+                                  out_name=out_name)
         val_data[i] = res
         if args.train:
-            res_train = get_metrics_for_run(res_dir, run_name, out_dir, col, subset='train', get_clf_report=args.cr)
+            res_train = get_metrics_for_run(res_dir, run_name, out_dir, col, subset='train', get_clf_report=args.cr,
+                                            out_name=out_name)
             train_data[i] = res_train
-    df = pd.DataFrame(val_data, index=os.listdir(args.res_dir), columns=metrics)
+    if args.out_names:
+        df_names = args.out_names
+    else:
+        df_names = [os.path.basename(run) for run in all_runs]
+    df = pd.DataFrame(val_data, index=df_names, columns=metrics)
     if args.train:
-        df_train = pd.DataFrame(train_data, index=os.listdir(res_dir), columns=metrics)
+        df_train = pd.DataFrame(train_data, index=df_names, columns=metrics)
         df = pd.concat([df, df_train], keys=['val', 'train'], axis=1)
     df.to_csv(os.path.join(out_dir, 'summary.csv'), float_format='%.2f')
 
