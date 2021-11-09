@@ -1,6 +1,7 @@
 import numpy as np
 import os
 import pandas as pd
+import torch
 import csv
 from sklearn.metrics import roc_auc_score, classification_report, f1_score, roc_curve
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
@@ -48,11 +49,12 @@ def get_save_classification_report(targets, preds, file_name, metric_res_dir='re
             writer.writerow(['epochs'] + epochs)
 
 
-def get_metrics_for_fold(fold_targets, fold_preds, fold_samples):
+def get_metrics_for_fold(fold_targets, fold_preds, fold_probs, fold_samples):
     """
     Get / collect metrics corresponding to a single fold
     :param fold_targets: Ground truth labels
     :param fold_preds: Model predicted labels
+    :param fold_probs: Output probabilities of fold
     :param fold_samples: Sample names
     :return: results dictionary, video_wise_targets, video_wise_probs
     """
@@ -61,17 +63,23 @@ def get_metrics_for_fold(fold_targets, fold_preds, fold_samples):
 
     # Get scores per video
     res_per_video = {}  # is format is {'vid_id': target, [predicted frames]}
+    i = 0
     for targ, pred, sample in zip(fold_targets, fold_preds, fold_samples):
         vid_id = sample.split('_')[0]
+        prob = np.nan if fold_probs is None else fold_probs[i]
         if vid_id in res_per_video:
             res_per_video[vid_id][1].append(pred)  # append all predictions for the given video
+            res_per_video[vid_id][2].append(prob)
         else:
-            res_per_video[vid_id] = (targ, [pred])  # first initialise it
+            res_per_video[vid_id] = (targ, [pred], [prob])  # first initialise it
+
+        i += 1
     video_targets = []
     video_preds = []
     video_probs = []
+    model_probs = []
     video_confidence_interval = []
-    # Get a single prediction per video
+    # Get a single prediction per video & get combined soft-maxed probs
     for res in res_per_video.values():
         ratio_pred_1 = np.sum(res[1]) / len(res[1])
         ratio_pred_0 = 1 - ratio_pred_1
@@ -80,6 +88,8 @@ def get_metrics_for_fold(fold_targets, fold_preds, fold_samples):
         video_probs.append(ratio_pred_1)
         video_preds.append(pred)
         video_targets.append(res[0])
+        # model_probs.extend(res[2])  # save frame model (softmax) prob
+        model_probs.append(np.nanmean(res[2]))
 
     res = {'Frame ROC_AUC': frame_roc_auc,
            'Video ROC_AUC': roc_auc_score(video_targets, video_preds),
@@ -87,7 +97,7 @@ def get_metrics_for_fold(fold_targets, fold_preds, fold_samples):
            'Video F1, pos': f1_score(video_targets, video_preds, average='binary'),
            'Video F1, neg': f1_score(video_targets, video_preds, pos_label=0, average='binary'),
            'Video CI':  np.mean(video_confidence_interval)}
-    return res, video_targets, video_probs
+    return res, video_targets, video_probs, model_probs
 
 
 def read_results(res_dir, subset='val'):
@@ -97,14 +107,19 @@ def read_results(res_dir, subset='val'):
     :param subset: train or val
     :return: list of model predictions, list of targets, list of sample names
     """
-    preds = np.load(os.path.join(res_dir, f'{subset}_preds.npy'))
+    outs = np.load(os.path.join(res_dir, f'{subset}_preds.npy'))
     targets = np.load(os.path.join(res_dir, f'{subset}_targets.npy'))
     samples = np.load(os.path.join(res_dir, f'{subset}_samples.npy'))
-    if len(preds) == 0:
-        return None, None, None
-    if isinstance(preds[0], (list, np.ndarray)):
-        preds = np.argmax(preds, axis=1)
-    return preds, targets, samples
+    if len(outs) == 0:
+        return None, None, None, None
+    if isinstance(outs[0], (list, np.ndarray)):
+        preds = np.argmax(outs, axis=1)
+        out_1s = outs[:, 1]  # extract output for class 1
+        probs = np.asarray(torch.softmax(torch.tensor(out_1s), dim=-1)) # get soft-maxed prob corresponding to class 1
+    else:
+        preds = outs
+        probs = None
+    return preds, probs, targets, samples
 
 
 def get_metrics_for_run(res_base_dir, run_name, out_dir, col, subset='val', get_clf_report=False, first=False,
@@ -126,6 +141,7 @@ def get_metrics_for_run(res_base_dir, run_name, out_dir, col, subset='val', get_
     preds = []
     vid_targets = []
     vid_probs = []
+    avg_softm_probs = []
     epochs = []
     res_path = os.path.join(res_base_dir, run_name) if res_base_dir is not None else run_name
     # start with first fold, ignore .DS_store and other non-dir files
@@ -134,18 +150,19 @@ def get_metrics_for_run(res_base_dir, run_name, out_dir, col, subset='val', get_
     for fold_dir in fold_paths:
         epoch = int(fold_dir.rsplit('_e', 1)[-1])
         epochs.append(epoch)
-        fold_dir = os.path.join(res_path, fold_dir)
-        fold_preds, fold_targets, fold_samples = read_results(fold_dir, subset)
+        # fold_dir = os.path.join(res_path, fold_dir)
+        fold_preds, fold_probs, fold_targets, fold_samples = read_results(fold_dir, subset)
         if fold_preds is None:
             print(f'failed for model {os.path.basename(fold_dir)}')
             continue
-        results, vid_targ, vid_prob = get_metrics_for_fold(fold_targets, fold_preds, fold_samples)
+        results, vid_targ, vid_prob, avg_prob = get_metrics_for_fold(fold_targets, fold_preds, fold_probs, fold_samples)
         for metric, val in results.items():
             metric_dict[metric].append(val)
         vid_probs.extend(vid_prob)
         vid_targets.extend(vid_targ)
         preds.extend(fold_preds)
         targets.extend(fold_targets)
+        avg_softm_probs.extend(avg_prob)
     # Save Results
     if get_clf_report:  # Classification report on a frame-level
         get_save_classification_report(targets, preds, f'{subset}_report_{run_name}.csv',
@@ -157,8 +174,12 @@ def get_metrics_for_run(res_base_dir, run_name, out_dir, col, subset='val', get_
 
     # Get ROC_AUC plot on a video-level, with thresholds referring to probability of frames
     run_label = out_name if out_name is not None else run_name[-25:]
-    fpr1, tpr1, thresh1 = roc_curve(vid_targets, vid_probs, pos_label=1)
-    plt.plot(fpr1, tpr1, color=col, label=run_label, marker='.')
+    preds_to_plot = vid_probs if np.isnan(avg_softm_probs[0]) else avg_softm_probs
+    targets_to_plot = vid_targets  # if np.isnan(avg_softm_probs[0]) else targets
+    # fpr1, tpr1, thresh1 = roc_curve(vid_targets, preds_to_plot, pos_label=1)
+    fpr1, tpr1, thresh1 = roc_curve(targets_to_plot, preds_to_plot, pos_label=1, drop_intermediate=False)
+    # plt.plot(fpr1, tpr1, color=col, label=run_label, marker='.')
+    plt.plot(fpr1, tpr1, color=col, label=run_label)
 
     ret = []
     for metric_values in metric_dict.values():
