@@ -20,6 +20,7 @@ parser.add_argument('--out_names', type=str, default=None, nargs='+',
 parser.add_argument('--out_dir', type=str, default='metric_results')
 parser.add_argument('--cr',  action='store_true', help='Set this flag to save also classification report per run')
 parser.add_argument('--train',  action='store_true', help='Set this flag to save also classification report per run')
+parser.add_argument('--only_plot',  action='store_true', help='Set this flag to only plot ROC_AUC')
 
 metrics = ['Frame ROC_AUC', 'Video ROC_AUC', 'Video F1 (macro)', 'Video F1, pos', 'Video F1, neg', 'Video CI']
 
@@ -196,11 +197,12 @@ def main():
         df_names = args.out_names
     else:
         df_names = [os.path.basename(run) for run in all_runs]
-    df = pd.DataFrame(val_data, index=df_names, columns=metrics)
-    if args.train:
-        df_train = pd.DataFrame(train_data, index=df_names, columns=metrics)
-        df = pd.concat([df, df_train], keys=['val', 'train'], axis=1)
-    df.to_csv(os.path.join(out_dir, 'summary.csv'), float_format='%.2f')
+    if not args.only_plot:
+        df = pd.DataFrame(val_data, index=df_names, columns=metrics)
+        if args.train:
+            df_train = pd.DataFrame(train_data, index=df_names, columns=metrics)
+            df = pd.concat([df, df_train], keys=['val', 'train'], axis=1)
+        df.to_csv(os.path.join(out_dir, 'summary.csv'), float_format='%.2f')
 
     # finalise roc_auc curve
     plt.xlabel("FPR")
