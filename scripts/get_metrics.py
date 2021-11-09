@@ -230,7 +230,7 @@ def main():
     # finalise roc_auc curve
     plt.xlabel("FPR")
     plt.ylabel("TPR")
-    title = ' '.join(args.plot_title) if args.plot_title is not None else 'ROC_AUC Curve'
+    title = ' '.join(args.plot_title) if args.plot_title is not None else ''
     plt.title(title)
     plt.legend(loc='lower right')
     plt.savefig(os.path.join(out_dir, 'val_roc_auc_curve'))
