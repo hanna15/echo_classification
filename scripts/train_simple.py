@@ -136,7 +136,7 @@ parser.add_argument('--res_dir', type=str, default='results',
                     help='Name of base directory for results')
 parser.add_argument('--segm_masks', action='store_true', help='set this flag to train only on segmentation masks')
 parser.add_argument('--crop', action='store_true', help='set this flag to crop to corners')
-
+parser.add_argument('--temporal', action='store_true', help='set this flag to predict on video clips')
 BASE_MODEL_DIR = 'models'
 
 
@@ -158,7 +158,11 @@ def get_run_name():
         wd = '.wd_' + str(args.wd)
     else:
         wd = ''
-    run_name = run_id + args.model + '_' + args.optimizer + '_lt_' + long_label_type_to_short[args.label_type] \
+    if args.temporal:
+        start = 'TEMP'
+    else:
+        start = ''
+    run_name = start + run_id + args.model + '_' + args.optimizer + '_lt_' + long_label_type_to_short[args.label_type] \
                + k + '.lr_' + str(args.lr) + '.batch_' + str(args.batch_size) + wd + '.me_' + str(args.max_epochs)
     if args.segm_masks:
         run_name += 'SEGM'
@@ -265,9 +269,9 @@ def run_batch(batch, model, criterion=None, binary=False):
     :return: The required metrics for this batch, as well as the predictions and targets
     """
     dev = device('cuda' if cuda.is_available() else 'cpu')
-    # input = batch["frame"].to(dev)  # batch_size, num_channels, w, h
-    input = batch["frame"].to(dev)  # batch_size, seq_len, num_channels, w, h
-    input = input.transpose(2, 1)  # want: (batch_size, channels, seq-len, W, H)
+    input = batch["frame"].to(dev)  # Batch_size, (seq_len), num_channels, w, h
+    if args.temporal:
+        input = input.transpose(2, 1)  # Reshape to: (batch_size, channels, seq-len, W, H)
     targets = batch["label"].to(dev)
     sample_names = batch["sample_name"]
     outputs = model(input)
@@ -551,7 +555,7 @@ def main():
                                 transform=train_transforms, scaling_factor=args.scaling_factor,
                                 procs=args.num_workers, visualise_frames=args.visualise_frames,
                                 percentile=args.max_p, view=args.view, min_expansion=args.min_expansion,
-                                num_rand_frames=args.num_rand_frames, segm_masks=args.segm_masks)
+                                num_rand_frames=args.num_rand_frames, segm_masks=args.segm_masks, temporal=args.temporal)
     if args.weight_loss:
         class_weights = torch.tensor(train_dataset.class_weights, dtype=torch.float).to(device)
     else:
@@ -560,21 +564,22 @@ def main():
                                 transform=valid_transforms, scaling_factor=args.scaling_factor, procs=args.num_workers,
                                 visualise_frames=args.visualise_frames, percentile=args.max_p, view=args.view,
                                 min_expansion=args.min_expansion, num_rand_frames=args.num_rand_frames,
-                                segm_masks=args.segm_masks)
+                                segm_masks=args.segm_masks, temporal=args.temporal)
     # For the data loader, if only use 1 worker, set it to 0, so data is loaded on the main process
     num_workers = (0 if args.num_workers == 1 else args.num_workers)
 
     # Model & Optimizers
-    model = get_resnet3d()
-    # model = get_resnet18()
-    # if args.model == 'resnet':
-    #     model = get_resnet18(num_classes=len(train_dataset.labels)).to(device)
-    # elif args.model == 'res_simple':
-    #     model = resnet_simpler(num_classes=len(train_dataset.labels), drop_prob=args.dropout).to(device)
-    # elif args.model == 'conv':
-    #     model = ConvNet(num_classes=len(train_dataset.labels), dropout_val=args.dropout).to(device)
-    # else:
-    #     model = SimpleConvNet(num_classes=len(train_dataset.labels)).to(device)
+    if args.temporal:
+        model = get_resnet3d(num_classes=len(train_dataset.labels), pretrained=args.pretrained).to(device)
+    else:
+        if args.model == 'resnet':
+            model = get_resnet18(num_classes=len(train_dataset.labels), pretrained=args.pretrained).to(device)
+        elif args.model == 'res_simple':
+            model = resnet_simpler(num_classes=len(train_dataset.labels), drop_prob=args.dropout).to(device)
+        elif args.model == 'conv':
+            model = ConvNet(num_classes=len(train_dataset.labels), dropout_val=args.dropout).to(device)
+        else:
+            model = SimpleConvNet(num_classes=len(train_dataset.labels)).to(device)
     os.makedirs(BASE_MODEL_DIR, exist_ok=True)  # create model results dir, if not exists
     os.makedirs(BASE_RES_DIR, exist_ok=True)  # create results dir, if not exists
 
