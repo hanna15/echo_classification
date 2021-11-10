@@ -1,3 +1,4 @@
+import torch
 from torch.utils.data import Dataset
 import numpy as np
 import os
@@ -106,7 +107,7 @@ class EchoDataset(Dataset):
             all_labels = pickle.load(label_file)
         label = all_labels[sample]
 
-        if self.segm_masks: # Train only on segmentation mask frames
+        if self.segm_masks:  # Train only on segmentation mask frames
             sample_w_ending = str(sample) + self.view
             # Todo: Generalise segm result dir
             segm = SegmentationAnalyser(sample_w_ending, os.path.join('segmented_results', str(self.scaling_factor)),
@@ -126,8 +127,9 @@ class EchoDataset(Dataset):
                 segmented_video = np.load(curr_video_path)
             # === Get frames for video ===
             if self.num_rand_frames:
-                frame_nrs = np.random.randint(0, len(segmented_video), self.num_rand_frames)
-            else: # Get max or min expansion frames, acc. to segmentation percentile
+                # frame_nrs = np.random.randint(0, len(segmented_video), self.num_rand_frames)
+                frame_nrs = np.random.randint(0, len(segmented_video) - 10, self.num_rand_frames)
+            else:  # Get max or min expansion frames, acc. to segmentation percentile
                 sample_w_ending = str(sample) + self.view
                 # Todo: Generalise segm result dir
                 segm = SegmentationAnalyser(sample_w_ending, os.path.join('segmented_results',
@@ -135,7 +137,13 @@ class EchoDataset(Dataset):
                                             model_view=self.view_to_segmodel_view[self.view])
                 frame_nrs = segm.extract_max_percentile_frames(percentile=self.max_percentile,
                                                                min_exp=self.min_expansion)
-            frames = segmented_video[frame_nrs]
+            start_frame_nrs = frame_nrs
+            frame_sequences = []
+            for s in start_frame_nrs:
+                seq = np.asarray(range(s, s + 10))  # tune 10-12, etc ?
+                frame_sequences.append(seq)
+            # frames = segmented_video[frame_nrs]
+            frames = segmented_video[np.asarray(frame_sequences)]
 
         sample_names = [str(sample) + '_' + str(fram_nr) for fram_nr in frame_nrs]
         return frames, label, sample_names
@@ -147,9 +155,16 @@ class EchoDataset(Dataset):
         label = self.targets[idx]
         sample_name = self.sample_names[idx]
         frame = self.frames[idx]
-
-        s = (frame, sample_name.split('_')[0] + self.view)
-        frame = self.transform(s)
+        #s = (frame, sample_name.split('_')[0] + self.view)
+        #frame = self.transform(s)
+        size = (len(frame), 1, 224, 224)
+        trans_frames = torch.empty(size)
+        for i, f in enumerate(frame):
+            s = (f, sample_name.split('_')[0] + self.view)
+            fr = self.transform(s)
+            # trans_frames.append(fr)
+            trans_frames[i] = fr
+        frame = trans_frames
         if self.visualise_frames:
             plt.imshow(frame.squeeze(0), cmap='Greys_r')
             plt.title(str(label) + ' - ' + str(sample_name))

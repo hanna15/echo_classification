@@ -13,6 +13,7 @@ import wandb
 from echo_ph.data.echo_dataset import EchoDataset
 from echo_ph.models.conv_nets import ConvNet, SimpleConvNet
 from echo_ph.models.resnets import resnet_simpler, get_resnet18
+from echo_ph.models.resnet_3d import get_resnet3d
 from echo_ph.data.ph_labels import long_label_type_to_short
 from utils.transforms import get_augment_transforms, get_base_transforms
 from utils.transforms2 import get_transforms
@@ -264,7 +265,9 @@ def run_batch(batch, model, criterion=None, binary=False):
     :return: The required metrics for this batch, as well as the predictions and targets
     """
     dev = device('cuda' if cuda.is_available() else 'cpu')
-    input = batch["frame"].to(dev)  # batch_size, num_channels, w, h
+    # input = batch["frame"].to(dev)  # batch_size, num_channels, w, h
+    input = batch["frame"].to(dev)  # batch_size, seq_len, num_channels, w, h
+    input = input.transpose(2, 1)  # want: (batch_size, channels, seq-len, W, H)
     targets = batch["label"].to(dev)
     sample_names = batch["sample_name"]
     outputs = model(input)
@@ -562,14 +565,16 @@ def main():
     num_workers = (0 if args.num_workers == 1 else args.num_workers)
 
     # Model & Optimizers
-    if args.model == 'resnet':
-        model = get_resnet18(num_classes=len(train_dataset.labels)).to(device)
-    elif args.model == 'res_simple':
-        model = resnet_simpler(num_classes=len(train_dataset.labels), drop_prob=args.dropout).to(device)
-    elif args.model == 'conv':
-        model = ConvNet(num_classes=len(train_dataset.labels), dropout_val=args.dropout).to(device)
-    else:
-        model = SimpleConvNet(num_classes=len(train_dataset.labels)).to(device)
+    model = get_resnet3d()
+    # model = get_resnet18()
+    # if args.model == 'resnet':
+    #     model = get_resnet18(num_classes=len(train_dataset.labels)).to(device)
+    # elif args.model == 'res_simple':
+    #     model = resnet_simpler(num_classes=len(train_dataset.labels), drop_prob=args.dropout).to(device)
+    # elif args.model == 'conv':
+    #     model = ConvNet(num_classes=len(train_dataset.labels), dropout_val=args.dropout).to(device)
+    # else:
+    #     model = SimpleConvNet(num_classes=len(train_dataset.labels)).to(device)
     os.makedirs(BASE_MODEL_DIR, exist_ok=True)  # create model results dir, if not exists
     os.makedirs(BASE_RES_DIR, exist_ok=True)  # create results dir, if not exists
 
