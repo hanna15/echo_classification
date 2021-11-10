@@ -28,7 +28,7 @@ def load_and_process_video(video_path):
 class EchoDataset(Dataset):
     def __init__(self, index_file_path, label_file_path, videos_dir=None, cache_dir=None,
                  transform=None, scaling_factor=0.5, procs=3, visualise_frames=False, percentile=90, view='KAPAP',
-                 min_expansion=False, num_rand_frames=None, segm_masks=False):
+                 min_expansion=False, num_rand_frames=None, segm_masks=False, temporal=False):
         """
         Dataset for echocardiogram processing and classification in PyTorch.
         :param index_file_path: Path to a numpy file, listing all sample names to use in this dataset.
@@ -49,6 +49,7 @@ class EchoDataset(Dataset):
         self.sample_names = []
         self.transform = transform
         self.videos_dir = videos_dir
+        self.temporal = temporal
         if cache_dir is None:
             self.cache_dir = None
         else:
@@ -101,7 +102,9 @@ class EchoDataset(Dataset):
         if not os.path.exists(curr_video_path):
             print(f'Skipping sample {sample}, as the video path {curr_video_path} does not exist')
             return None, None, None
-
+        import random
+        if random.random() < 0.95:  # TEMP TO HAVE LESS DATA => REMOVE
+            return None, None, None
         # === Get labels ===
         with open(self.label_path, 'rb') as label_file:
             all_labels = pickle.load(label_file)
@@ -128,7 +131,7 @@ class EchoDataset(Dataset):
             # === Get frames for video ===
             if self.num_rand_frames:
                 # frame_nrs = np.random.randint(0, len(segmented_video), self.num_rand_frames)
-                frame_nrs = np.random.randint(0, len(segmented_video) - 10, self.num_rand_frames)
+                frame_nrs = np.random.randint(0, len(segmented_video) - 12, self.num_rand_frames)
             else:  # Get max or min expansion frames, acc. to segmentation percentile
                 sample_w_ending = str(sample) + self.view
                 # Todo: Generalise segm result dir
@@ -137,15 +140,17 @@ class EchoDataset(Dataset):
                                             model_view=self.view_to_segmodel_view[self.view])
                 frame_nrs = segm.extract_max_percentile_frames(percentile=self.max_percentile,
                                                                min_exp=self.min_expansion)
-            start_frame_nrs = frame_nrs
-            frame_sequences = []
-            for s in start_frame_nrs:
-                seq = np.asarray(range(s, s + 10))  # tune 10-12, etc ?
-                frame_sequences.append(seq)
-            # frames = segmented_video[frame_nrs]
-            frames = segmented_video[np.asarray(frame_sequences)]
+            if self.temporal:
+                start_frame_nrs = frame_nrs
+                frame_sequences = []
+                for s in start_frame_nrs:
+                    seq = np.asarray(range(s, s + 12))  # Todo: add possibility of everyt n-th (range(s, s+max, nth))
+                    frame_sequences.append(seq)
+                frames = segmented_video[np.asarray(frame_sequences)]
+            else:
+                frames = segmented_video[frame_nrs]
 
-        sample_names = [str(sample) + '_' + str(fram_nr) for fram_nr in frame_nrs]
+        sample_names = [str(sample) + '_' + str(frame_nr) for frame_nr in frame_nrs]
         return frames, label, sample_names
 
     def __len__(self):
@@ -155,19 +160,20 @@ class EchoDataset(Dataset):
         label = self.targets[idx]
         sample_name = self.sample_names[idx]
         frame = self.frames[idx]
-        #s = (frame, sample_name.split('_')[0] + self.view)
-        #frame = self.transform(s)
-        size = (len(frame), 1, 224, 224)
-        trans_frames = torch.empty(size)
-        for i, f in enumerate(frame):
-            s = (f, sample_name.split('_')[0] + self.view)
-            fr = self.transform(s)
-            # trans_frames.append(fr)
-            trans_frames[i] = fr
-        frame = trans_frames
+        if self.temporal:
+            frame = list(frame)
+        s = (frame, sample_name.split('_')[0] + self.view)
+        frame = self.transform(s)
+
         if self.visualise_frames:
-            plt.imshow(frame.squeeze(0), cmap='Greys_r')
-            plt.title(str(label) + ' - ' + str(sample_name))
-            plt.show()
+            if self.temporal:
+                for i, f in enumerate(frame):
+                    plt.imshow(f.squeeze(0), cmap='Greys_r')
+                    plt.title(str(label) + ' - ' + str(sample_name) + '-' + str(i))
+                    plt.show()
+            else:
+                plt.imshow(frame.squeeze(0), cmap='Greys_r')
+                plt.title(str(label) + ' - ' + str(sample_name))
+                plt.show()
         sample = {'label': label, 'frame': frame, 'sample_name': sample_name}
         return sample
