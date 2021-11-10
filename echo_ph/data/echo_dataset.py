@@ -103,8 +103,6 @@ class EchoDataset(Dataset):
             print(f'Skipping sample {sample}, as the video path {curr_video_path} does not exist')
             return None, None, None
         import random
-        if random.random() < 0.95:  # TEMP TO HAVE LESS DATA => REMOVE
-            return None, None, None
         # === Get labels ===
         with open(self.label_path, 'rb') as label_file:
             all_labels = pickle.load(label_file)
