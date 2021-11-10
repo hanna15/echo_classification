@@ -262,8 +262,8 @@ def resnet_simpler(num_classes, drop_prob, **kwargs: Any) -> ResNet:
     return _resnet(BasicBlock, [1, 1, 1, 1], **kwargs)
 
 
-def get_resnet18(num_classes=3):
-    model = resnet18(pretrained=True)
+def get_resnet18(num_classes=3, pretrained=True):
+    model = resnet18(pretrained=pretrained)
     in_channels = 1  # Grayscale
     model.conv1 = nn.Conv2d(in_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
 
