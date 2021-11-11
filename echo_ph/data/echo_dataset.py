@@ -28,7 +28,7 @@ def load_and_process_video(video_path):
 class EchoDataset(Dataset):
     def __init__(self, index_file_path, label_file_path, videos_dir=None, cache_dir=None,
                  transform=None, scaling_factor=0.5, procs=3, visualise_frames=False, percentile=90, view='KAPAP',
-                 min_expansion=False, num_rand_frames=None, segm_masks=False, temporal=False):
+                 min_expansion=False, num_rand_frames=None, segm_masks=False, temporal=False, period=1, clip_len=0):
         """
         Dataset for echocardiogram processing and classification in PyTorch.
         :param index_file_path: Path to a numpy file, listing all sample names to use in this dataset.
@@ -50,6 +50,8 @@ class EchoDataset(Dataset):
         self.transform = transform
         self.videos_dir = videos_dir
         self.temporal = temporal
+        self.period = period  # How much to sub-sample frames in a clip
+        self.clip_len = clip_len  # How many frames in a clip => total frame span is period * clip_len
         if cache_dir is None:
             self.cache_dir = None
         else:
@@ -102,7 +104,6 @@ class EchoDataset(Dataset):
         if not os.path.exists(curr_video_path):
             print(f'Skipping sample {sample}, as the video path {curr_video_path} does not exist')
             return None, None, None
-        import random
         # === Get labels ===
         with open(self.label_path, 'rb') as label_file:
             all_labels = pickle.load(label_file)
@@ -128,8 +129,8 @@ class EchoDataset(Dataset):
                 segmented_video = np.load(curr_video_path)
             # === Get frames for video ===
             if self.num_rand_frames:
-                # frame_nrs = np.random.randint(0, len(segmented_video), self.num_rand_frames)
-                frame_nrs = np.random.randint(0, len(segmented_video) - 12, self.num_rand_frames)
+                max_frame = len(segmented_video) - (self.clip_len * self.period)
+                frame_nrs = np.random.randint(0, max_frame, self.num_rand_frames)
             else:  # Get max or min expansion frames, acc. to segmentation percentile
                 sample_w_ending = str(sample) + self.view
                 # Todo: Generalise segm result dir
@@ -142,7 +143,7 @@ class EchoDataset(Dataset):
                 start_frame_nrs = frame_nrs
                 frame_sequences = []
                 for s in start_frame_nrs:
-                    seq = np.asarray(range(s, s + 12))  # Todo: add possibility of everyt n-th (range(s, s+max, nth))
+                    seq = np.asarray(range(s, s + self.clip_len * self.period, self.period))
                     frame_sequences.append(seq)
                 frames = segmented_video[np.asarray(frame_sequences)]
             else:
@@ -162,7 +163,6 @@ class EchoDataset(Dataset):
             frame = list(frame)
         s = (frame, sample_name.split('_')[0] + self.view)
         frame = self.transform(s)
-
         if self.visualise_frames:
             if self.temporal:
                 for i, f in enumerate(frame):

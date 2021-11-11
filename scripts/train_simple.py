@@ -13,9 +13,8 @@ import wandb
 from echo_ph.data.echo_dataset import EchoDataset
 from echo_ph.models.conv_nets import ConvNet, SimpleConvNet
 from echo_ph.models.resnets import resnet_simpler, get_resnet18
-from echo_ph.models.resnet_3d import get_resnet3d
+from echo_ph.models.resnet_3d import get_resnet3d_18, get_resnet3d_50
 from echo_ph.data.ph_labels import long_label_type_to_short
-from utils.transforms import get_augment_transforms, get_base_transforms
 from utils.transforms2 import get_transforms
 from sklearn.metrics import f1_score, accuracy_score, balanced_accuracy_score, roc_auc_score
 import warnings
@@ -79,7 +78,8 @@ parser.add_argument('--num_rand_frames', type=int, default=None,
 parser.add_argument('--augment', action='store_true',
                     help='set this flag to apply ALL augmentation transformations to training data')
 parser.add_argument('--aug_type', type=int, default=2,
-                    help='What augmentation type to use (1 for 25% not, 2 for gray vs. background, 3 for as in his thesis')
+                    help='What augmentation type to use (1 for 25% not, 2 for gray vs. background, '
+                         '3 for as in his thesis')
 parser.add_argument('--noise', action='store_true',
                     help='Apply random noise augmentation')
 parser.add_argument('--intensity', action='store_true',
@@ -102,7 +102,8 @@ parser.add_argument('--load_model', action='store_true',
                     help='Set this flag to load an already trained model to predict only, instead of training it.'
                          'If args.model_name is set, load model from that path. Otherwise, get model name acc. to'
                          'function get_run_name(), and load the corresponding model')
-parser.add_argument('--model', default='resnet', choices=['resnet', 'res_simple', 'conv', 'simple_conv'],
+parser.add_argument('--model', default='resnet', choices=['resnet', 'res_simple', 'conv', 'simple_conv',
+                                                          'r2plus1d_18', 'mc3_18', 'r3d_18', 'r3d_50'],
                     help='What model architecture to use.')
 parser.add_argument('--dropout', type=float, default=0.5, help='Dropout value for those model who use dropout')
 parser.add_argument('--optimizer', default='adam', choices=['adam', 'adamw'], help='What optimizer to use.')
@@ -136,7 +137,13 @@ parser.add_argument('--res_dir', type=str, default='results',
                     help='Name of base directory for results')
 parser.add_argument('--segm_masks', action='store_true', help='set this flag to train only on segmentation masks')
 parser.add_argument('--crop', action='store_true', help='set this flag to crop to corners')
+
+# Temporal parameters
 parser.add_argument('--temporal', action='store_true', help='set this flag to predict on video clips')
+parser.add_argument('--clip_len', type=int, default=0, help='How many frames to select per video')
+parser.add_argument('--period', type=int, default=1, help='Sample period, sample every n-th frame')
+
+
 BASE_MODEL_DIR = 'models'
 
 
@@ -159,7 +166,7 @@ def get_run_name():
     else:
         wd = ''
     if args.temporal:
-        start = 'TEMP'
+        start = 'TEMP' + '_cl' + str(args.clip_len) + '_sp' + str(args.period)
     else:
         start = ''
     run_name = start + run_id + args.model + '_' + args.optimizer + '_lt_' + long_label_type_to_short[args.label_type] \
@@ -399,11 +406,9 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
     for epoch in range(args.max_epochs):
         epoch_loss = epoch_valid_loss = 0
         epoch_targets = []
-        epoch_preds = []
         epoch_outs = []
         epoch_samples = []
         epoch_valid_targets = []
-        epoch_valid_preds = []
         epoch_valid_samples = []
         epoch_valid_outs = []
 
@@ -413,7 +418,6 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
             loss, out, targets, sample_names = run_batch(train_batch, model, criterion, binary)
             epoch_samples.extend(sample_names)
             epoch_targets.extend(targets)
-            # epoch_preds.extend(torch.max(out, dim=1)[1])
             epoch_outs.extend(out.cpu().detach().numpy())
             epoch_loss += loss.item() * args.batch_size
             optimizer.zero_grad()
@@ -436,12 +440,7 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
 
         if epoch % args.log_freq == 0:  # log every xth epoch
             target_lst = [t.item() for t in epoch_targets]
-            # pred_lst = [t.item() for t in epoch_preds]
             targ_lst_valid = [t.item() for t in epoch_valid_targets]
-           #  pred_lst_valid = [t.item() for t in epoch_valid_preds]
-            #epoch_metrics = get_metrics(pred_lst, target_lst, epoch_samples, prefix='train', binary=binary)
-            #epoch_valid_metrics = get_metrics(pred_lst_valid, targ_lst_valid, epoch_valid_samples, prefix='valid',
-            #                                  binary=binary)
             epoch_metrics = get_metrics(epoch_outs, target_lst, epoch_samples, prefix='train', binary=binary)
             epoch_valid_metrics = get_metrics(epoch_valid_outs, targ_lst_valid, epoch_valid_samples, prefix='valid',
                                               binary=binary)
@@ -555,7 +554,8 @@ def main():
                                 transform=train_transforms, scaling_factor=args.scaling_factor,
                                 procs=args.num_workers, visualise_frames=args.visualise_frames,
                                 percentile=args.max_p, view=args.view, min_expansion=args.min_expansion,
-                                num_rand_frames=args.num_rand_frames, segm_masks=args.segm_masks, temporal=args.temporal)
+                                num_rand_frames=args.num_rand_frames, segm_masks=args.segm_masks,
+                                temporal=args.temporal, clip_len=args.clip_len, period=args.period)
     if args.weight_loss:
         class_weights = torch.tensor(train_dataset.class_weights, dtype=torch.float).to(device)
     else:
@@ -564,13 +564,18 @@ def main():
                                 transform=valid_transforms, scaling_factor=args.scaling_factor, procs=args.num_workers,
                                 visualise_frames=args.visualise_frames, percentile=args.max_p, view=args.view,
                                 min_expansion=args.min_expansion, num_rand_frames=args.num_rand_frames,
-                                segm_masks=args.segm_masks, temporal=args.temporal)
+                                segm_masks=args.segm_masks, temporal=args.temporal,
+                                clip_len=args.clip_len, period=args.period)
     # For the data loader, if only use 1 worker, set it to 0, so data is loaded on the main process
     num_workers = (0 if args.num_workers == 1 else args.num_workers)
 
     # Model & Optimizers
     if args.temporal:
-        model = get_resnet3d(num_classes=len(train_dataset.labels), pretrained=args.pretrained).to(device)
+        if args.model.endswith('18'):
+            model = get_resnet3d_18(num_classes=len(train_dataset.labels), pretrained=args.pretrained,
+                                    model_name=args.model_name).to(device)
+        else:
+            model = get_resnet3d_50(num_classes=len(train_dataset.labels), pretrained=args.pretrained).to(device)
     else:
         if args.model == 'resnet':
             model = get_resnet18(num_classes=len(train_dataset.labels), pretrained=args.pretrained).to(device)
