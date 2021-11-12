@@ -39,7 +39,7 @@ parser.add_argument('--train_set', action='store_true', help='Also get grad cam 
 # Temporal param
 parser.add_argument('--clip_len', type=int, default=0, help='How many frames to select per video')
 parser.add_argument('--period', type=int, default=1, help='Sample period, sample every n-th frame')
-parser.add_argument('--zip', type=int, default=1, help='Zip the resulting dir')
+parser.add_argument('--zip', action='store_true', help='Zip the resulting dir')
 
 
 def get_data_loader(train=False):
@@ -85,7 +85,7 @@ def get_save_grad_cam_images(data_loader, model, device, subset='valid'):
             plt.title(title)
             plt.savefig(os.path.join(sample_dir, 'frame_' + str(i) + '.png'))
         if args.zip:
-            os.system(f'zip -r {sample_dir}.zip sample_dir')
+            os.system(f'zip -r {sample_dir}.zip {sample_dir}')
 
 
 def main():
