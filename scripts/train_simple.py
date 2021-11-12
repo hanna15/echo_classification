@@ -573,7 +573,7 @@ def main():
     if args.temporal:
         if args.model.endswith('18'):
             model = get_resnet3d_18(num_classes=len(train_dataset.labels), pretrained=args.pretrained,
-                                    model_name=args.model_name).to(device)
+                                    model_type=args.model).to(device)
         else:
             model = get_resnet3d_50(num_classes=len(train_dataset.labels), pretrained=args.pretrained).to(device)
     else:
