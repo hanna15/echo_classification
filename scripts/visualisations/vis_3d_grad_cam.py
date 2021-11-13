@@ -14,8 +14,7 @@ parser = ArgumentParser(
     formatter_class=ArgumentDefaultsHelpFormatter)
 parser.add_argument('--model_path', default=None, help='set to path of a model state dict, to evaluate on. '
                                                        'If None, use resnet18 pretrained on Imagenet only.')
-parser.add_argument('--model', default='resnet', choices=['resnet', 'res_simple', 'conv', 'simple_conv',
-                                                          'r2plus1d_18', 'mc3_18', 'r3d_18', 'r3d_50'],
+parser.add_argument('--model', default='r3d_50', choices=['r2plus1d_18', 'mc3_18', 'r3d_18', 'r3d_50'],
                     help='What model architecture to use.')
 parser.add_argument('--label_type', default='2class_drop_ambiguous',
                     choices=['2class', '2class_drop_ambiguous', '3class'])
@@ -37,7 +36,7 @@ parser.add_argument('--train_set', action='store_true', help='Also get grad cam 
                                                              'with random augmentation (type 3)')
 
 # Temporal param
-parser.add_argument('--clip_len', type=int, default=0, help='How many frames to select per video')
+parser.add_argument('--clip_len', type=int, default=12, help='How many frames to select per video')
 parser.add_argument('--period', type=int, default=1, help='Sample period, sample every n-th frame')
 parser.add_argument('--zip', action='store_true', help='Zip the resulting dir')
 
@@ -79,13 +78,13 @@ def get_save_grad_cam_images(data_loader, model, device, subset='valid'):
         for i in range(len(video)):
             img = video[i]
             att_img = att_video[i]
-            plt.imshow(img.squeeze(), cmap='Greys_r')
-            plt.imshow(att_img.squeeze(), cmap='jet', alpha=0.5)
+            plt.imshow(img.squeeze().cpu(), cmap='Greys_r')
+            plt.imshow(att_img.squeeze().cpu(), cmap='jet', alpha=0.5)
             title = f'{sample_name}-{i}-{corr}-{label}.jpg'
             plt.title(title)
             plt.savefig(os.path.join(sample_dir, 'frame_' + str(i) + '.png'))
-        if args.zip:
-            os.system(f'zip -r {sample_dir}.zip {sample_dir}')
+    if args.zip:
+        os.system(f'zip -r {base_res_dir}.zip {base_res_dir}')
 
 
 def main():
