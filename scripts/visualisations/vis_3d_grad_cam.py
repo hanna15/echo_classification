@@ -78,8 +78,8 @@ def get_save_grad_cam_images(data_loader, model, device, subset='valid'):
         for i in range(len(video)):
             img = video[i]
             att_img = att_video[i]
-            plt.imshow(img.squeeze(), cmap='Greys_r')
-            plt.imshow(att_img.squeeze(), cmap='jet', alpha=0.5)
+            plt.imshow(img.squeeze().cpu(), cmap='Greys_r')
+            plt.imshow(att_img.squeeze().cpu(), cmap='jet', alpha=0.5)
             title = f'{sample_name}-{i}-{corr}-{label}.jpg'
             plt.title(title)
             plt.savefig(os.path.join(sample_dir, 'frame_' + str(i) + '.png'))
