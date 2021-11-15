@@ -15,7 +15,6 @@ from echo_ph.data.segmentation import segmentation_labels, our_view_to_segm_view
 from scipy.spatial import ConvexHull
 import multiprocessing as mp
 FILL_VAL = 0.3
-
 # FILL_VAL = 0
 
 TORCH_SEED = 0
@@ -385,6 +384,9 @@ class Augment():
         self.type = aug_type
         self.masks = self._get_masks(fold)
 
+        # self.pad = 12
+        self.pad = 18
+
         # Define augmentation transforms
         self.intensity_transformations = [
             RandomSharpness(),
@@ -397,6 +399,9 @@ class Augment():
             transforms.RandomAffine(0, translate=(0.1, 0.1), fill=FILL_VAL),
             RandomResize(),
         ]
+
+        self.augments = [transforms.RandomRotation(degrees=15),
+                         RandomResize(fill_val=0)]  # only black-background
 
     def _get_masks(self, fold):
         print('in _get_masks')
@@ -452,6 +457,27 @@ class Augment():
                 sample = t(sample)
         return sample
 
+    def _apply_positional_transforms2(self, sample):
+        # TODO adapt this to also work for non-temporal
+        if len(sample.shape) == 4:  # temporal, i.e. video
+            l, c, h, w = sample.shape
+            temp = np.zeros((l, c, h + 2 * self.pad, w + 2 * self.pad), dtype=np.float32)
+            temp[:, :, self.pad:-self.pad, self.pad:-self.pad] = sample  # pylint: disable=E1130
+        else:  # spatial, i.e. single frames
+            c, h, w = sample.shape
+            temp = np.zeros((c, h + 2 * self.pad, w + 2 * self.pad), dtype=np.float32)
+            temp[:, self.pad:-self.pad, self.pad:-self.pad] = sample  # pylint: disable=E1130
+        i, j = np.random.randint(0, 2 * self.pad, 2)
+        if len(sample.shape) == 4:
+            sample = temp[:, :, i:(i + h), j:(j + w)]
+            sample = torch.stack([torch.from_numpy(s).float() for s in sample])  # to tensor
+        else:
+            sample = temp[:, i:(i + h), j:(j + w)]
+            sample = torch.from_numpy(sample).float()
+        for aug in self.augments:
+            sample = aug(sample)
+        return sample
+
     def __call__(self, sample):
         # Get sample and corresponding mask
         sample, p_id = sample
@@ -481,6 +507,8 @@ class Augment():
             sample = self._apply_positional_transforms(sample, mask, p=0.5)
         elif self.type == 3:
             sample = self._apply_positional_transforms(sample, mask, p=0.4)
+        elif self.type == 5:
+            sample = self._apply_positional_transforms2(sample)
         else:  # for augmentation type 2 and 4, not always apply positional transforms
             pos_tf = False
             if torch.rand(1) < 0.75:  # 75 % get also positional transforms, each one with 60% chance
@@ -547,6 +575,7 @@ def get_transforms(
             Augment(mask_path, index_file_path, orig_img_scale=dataset_orig_img_scale, size=resize, return_pid=with_pid,
                     fold=fold, valid=valid, view=view, aug_type=augment) if augment != 0 and not segm_mask_only
             else Identity(),
+            # ConvertToTensor(),  # TODO: REMOVE
             AugmentSegMasks() if augment != 0 and segm_mask_only else Identity(),
             RandomNoise() if noise and not segm_mask_only else Identity()
         ]
