@@ -91,6 +91,29 @@ class EchoDataset(Dataset):
         for label, cnt in zip(self.labels, cnts):  # Print number of occurrences of each label
             print(label, ':', cnt)
 
+    def get_random_frame_nrs(self, total_len):
+        max_frame = total_len - (self.clip_len * self.period)
+        frame_nrs = np.random.randint(0, max_frame, self.num_rand_frames)
+        return frame_nrs
+
+    def get_frames(self, frame_nrs, all_frames):
+        """
+        Get frames to train on, given frame numbers and all frames (i.e. entire video or entire segmentation masks)
+        :param frame_nrs: The frame numbers
+        :param all_frames: All frames of a given video or segmentation mask
+        :return: The frames to be used for this sample, depending on if temporal or spatial approach
+        """
+        if self.temporal:
+            start_frame_nrs = frame_nrs
+            frame_sequences = []
+            for s in start_frame_nrs:
+                seq = np.asarray(range(s, s + self.clip_len * self.period, self.period))
+                frame_sequences.append(seq)
+            frames = all_frames[np.asarray(frame_sequences)]
+        else:
+            frames = all_frames[frame_nrs]
+        return frames
+
     def load_sample(self, sample):
         """
         Load line regions and program for a given sample
@@ -116,11 +139,11 @@ class EchoDataset(Dataset):
                                         model_view=self.view_to_segmodel_view[self.view])
             segm_mask = segm.get_segm_mask()
             if self.num_rand_frames:
-                frame_nrs = np.random.randint(0, len(segm_mask), self.num_rand_frames)
+                frame_nrs = self.get_random_frame_nrs(total_len=len(segm_mask))
             else:
                 frame_nrs = segm.extract_max_percentile_frames(percentile=self.max_percentile,
                                                                min_exp=self.min_expansion)
-            frames = segm_mask[frame_nrs]
+            frames = self.get_frames(frame_nrs, segm_mask)
         else:  # Train on video frames
             # === Get video ==
             if self.cache_dir is None:  # load raw video and process
@@ -129,8 +152,7 @@ class EchoDataset(Dataset):
                 segmented_video = np.load(curr_video_path)
             # === Get frames for video ===
             if self.num_rand_frames:
-                max_frame = len(segmented_video) - (self.clip_len * self.period)
-                frame_nrs = np.random.randint(0, max_frame, self.num_rand_frames)
+                frame_nrs = self.get_random_frame_nrs(total_len=len(segmented_video))
             else:  # Get max or min expansion frames, acc. to segmentation percentile
                 sample_w_ending = str(sample) + self.view
                 # Todo: Generalise segm result dir
@@ -139,15 +161,7 @@ class EchoDataset(Dataset):
                                             model_view=self.view_to_segmodel_view[self.view])
                 frame_nrs = segm.extract_max_percentile_frames(percentile=self.max_percentile,
                                                                min_exp=self.min_expansion)
-            if self.temporal:
-                start_frame_nrs = frame_nrs
-                frame_sequences = []
-                for s in start_frame_nrs:
-                    seq = np.asarray(range(s, s + self.clip_len * self.period, self.period))
-                    frame_sequences.append(seq)
-                frames = segmented_video[np.asarray(frame_sequences)]
-            else:
-                frames = segmented_video[frame_nrs]
+            frames = self.get_frames(frame_nrs, segmented_video)
 
         sample_names = [str(sample) + '_' + str(frame_nr) for frame_nr in frame_nrs]
         return frames, label, sample_names
