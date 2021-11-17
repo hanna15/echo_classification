@@ -109,7 +109,7 @@ def get_save_grad_cam_images(data_loader, model, cam, device, subset='valid'):
             for grad_cam_frame, title in zip(video_frames[video_id][0], video_frames[video_id][1]):
                 cv2.imwrite(os.path.join(out_dir, title), grad_cam_frame)
             if args.save_video:
-                vs = VideoSaver(video_id, video_frames[video_id][0])
+                vs = VideoSaver(video_id, video_frames[video_id][0], out_dir='vis_video_3d')
                 vs.save_video()
 
 
