@@ -77,8 +77,8 @@ def get_save_grad_cam_images(data_loader, model, cam, device, subset='valid'):
         model_name = os.path.basename(args.model_path)[:-3]
         output_dir = os.path.join('grad_cam_vis', model_name, subset)
         os.makedirs(output_dir, exist_ok=True)
+    video_frames = {}
     for batch in data_loader:
-        all_frames = []
         img = batch['frame'].to(device)
         sample_name = batch['sample_name'][0]
         video_id = int(sample_name.split('_')[0])
@@ -86,25 +86,31 @@ def get_save_grad_cam_images(data_loader, model, cam, device, subset='valid'):
         pred = torch.max(model(img), dim=1).indices[0].item()
         corr = 'CORR' if label == pred else 'WRONG'
         title = f'{sample_name}-{corr}-{label}.jpg'
-        out_dir = os.path.join(output_dir,  f'{sample_name}_{corr}_{label}')
-        os.makedirs(out_dir, exist_ok=True)
         grayscale_cam = cam(input_tensor=img,
                             target_category=target_category)
         img = np.stack((img.squeeze().cpu(),) * 3, axis=-1)  # create a 3-channel image from the grayscale img
         try:
             cam_image = show_cam_on_image(img, grayscale_cam[0])
-            all_frames.append(cam_image)
-            if args.show:
-                plt.imshow(cam_image)
-                plt.title(title)
-                plt.show()
-            if args.save:
-                cv2.imwrite(os.path.join(out_dir, title), cam_image)
-            if args.save_video:
-                vs = VideoSaver(video_id, all_frames)  # Use default fps and max_frames
-                vs.save_video()
         except:
             print(f'failed for sample {sample_name}, max is {img.max()}, min is {img.min()}')
+        if video_id not in video_frames:
+            video_frames[video_id] = ([cam_image], [title])
+        else:
+            video_frames[video_id][0].append(cam_image)
+            video_frames[video_id][1].append(title)
+        if args.show:
+            plt.imshow(cam_image)
+            plt.title(title)
+            plt.show()
+    if args.save or args.save_video:
+        for video_id in video_frames:
+            out_dir = os.path.join(output_dir, str(video_id))
+            os.makedirs(out_dir, exist_ok=True)
+            for grad_cam_frame, title in zip(video_frames[video_id][0], video_frames[video_id][1]):
+                cv2.imwrite(os.path.join(out_dir, title), grad_cam_frame)
+            if args.save_video:
+                vs = VideoSaver(video_id, video_frames[video_id][0])
+                vs.save_video()
 
 
 def main():
