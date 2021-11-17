@@ -7,6 +7,7 @@ import cv2
 from pytorch_grad_cam import GradCAM
 from pytorch_grad_cam.utils.image import show_cam_on_image
 from echo_ph.models.resnets import get_resnet18
+from echo_ph.visual.video_saver import VideoSaver
 import numpy as np
 from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
@@ -35,19 +36,27 @@ parser.add_argument('--min_expansion', action='store_true',
                     help='Percentile for min expansion frames instead of maximum')
 parser.add_argument('--num_rand_frames', type=int, default=None,
                     help='Set this only if get random frames instead of max/min')
+parser.add_argument('--all_frames', action='store_true', default=None,
+                    help='Get all frames of a video')
 parser.add_argument('--crop', action='store_true', help='If crop to corners')
 parser.add_argument('--save', action='store_true', help='If to save grad cam images')
 parser.add_argument('--show', action='store_true', help='If to show grad cam images')
 parser.add_argument('--train_set', action='store_true', help='Also get grad cam for the images in the training set, '
                                                              'with random augmentation (type 3)')
 parser.add_argument('--segm_only', action='store_true', help='Only evaluate on the segmentation masks')
+parser.add_argument('--video_ids', default=None, nargs='+', type=int, help='Instead of getting results acc.to index file, '
+                                                                 'get results for specific video ids')
+parser.add_argument('--save_video', action='store_true', help='If also to save video visualisations')
 
 
 def get_data_loader(train=False):
-    idx_dir = 'index_files' if args.k is None else os.path.join('index_files', 'k' + str(args.k))
-    idx_file_end = '' if args.fold is None else '_' + str(args.fold)
-    idx_file_base_name = 'train_samples_' if train else 'valid_samples_'
-    index_file_path = os.path.join(idx_dir, idx_file_base_name + args.label_type + idx_file_end + '.npy')
+    if args.video_ids:
+        index_file_path = None
+    else:
+        idx_dir = 'index_files' if args.k is None else os.path.join('index_files', 'k' + str(args.k))
+        idx_file_end = '' if args.fold is None else '_' + str(args.fold)
+        idx_file_base_name = 'train_samples_' if train else 'valid_samples_'
+        index_file_path = os.path.join(idx_dir, idx_file_base_name + args.label_type + idx_file_end + '.npy')
     label_path = os.path.join('label_files', 'labels_' + args.label_type + '.pkl')
     aug_type = 3 if train else 0
     transforms = get_transforms(index_file_path, dataset_orig_img_scale=args.scale, resize=224,
@@ -56,7 +65,8 @@ def get_data_loader(train=False):
     dataset = EchoDataset(index_file_path, label_path, cache_dir=args.cache_dir,
                           transform=transforms, scaling_factor=args.scale, procs=args.n_workers,
                           percentile=args.max_p, view=args.view, min_expansion=args.min_expansion,
-                          num_rand_frames=args.num_rand_frames, segm_masks=args.segm_only)
+                          num_rand_frames=args.num_rand_frames, segm_masks=args.segm_only, video_ids=args.video_ids,
+                          all_frames=args.all_frames)
     data_loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=args.n_workers)
     return data_loader
 
@@ -68,23 +78,40 @@ def get_save_grad_cam_images(data_loader, model, cam, device, subset='valid'):
         output_dir = os.path.join('grad_cam_vis', model_name, subset)
         os.makedirs(output_dir, exist_ok=True)
     for batch in data_loader:
+        all_frames = []
         img = batch['frame'].to(device)
         sample_name = batch['sample_name'][0]
+        video_id = int(sample_name.split('_')[0])
         label = batch['label'][0].item()
         pred = torch.max(model(img), dim=1).indices[0].item()
         corr = 'CORR' if label == pred else 'WRONG'
         title = f'{sample_name}-{corr}-{label}.jpg'
+        out_dir = os.path.join(output_dir,  f'{sample_name}_{corr}_{label}')
+        os.makedirs(out_dir, exist_ok=True)
         grayscale_cam = cam(input_tensor=img,
                             target_category=target_category)
         img = np.stack((img.squeeze().cpu(),) * 3, axis=-1)  # create a 3-channel image from the grayscale img
         try:
             cam_image = show_cam_on_image(img, grayscale_cam[0])
+            all_frames.append(cam_image)
             if args.show:
                 plt.imshow(cam_image)
                 plt.title(title)
                 plt.show()
             if args.save:
-                cv2.imwrite(os.path.join(output_dir, title), cam_image)
+                cv2.imwrite(os.path.join(out_dir, title), cam_image)
+            if args.save_video:
+                vs = VideoSaver(video_id, all_frames)  # Use default fps and max_frames
+                vs.save_video()
+                # size = (all_frames[0].shape[0], all_frames[0].shape[1])
+                # video_dir = 'vis_videos'
+                # os.makedirs(video_dir, exist_ok=True)
+                # result = cv2.VideoWriter(os.path.joinvideo_dir, f'{sample_name}_{corr}_{label}.avi',
+                #                          cv2.VideoWriter_fourcc(*'MJPG'), 24, size)
+                # for frame in all_frames[0:]:
+                #     result.write(frame)
+                # result.release()
+                # cv2.destroyAllWindows()
         except:
             print(f'failed for sample {sample_name}, max is {img.max()}, min is {img.min()}')
 
@@ -98,7 +125,7 @@ def main():
     num_classes = 2 if args.label_type.startswith('2') else 3
     model = get_resnet18(num_classes=num_classes)
     if args.model_path is not None:
-        model.load_state_dict(torch.load(args.model_path))
+        model.load_state_dict(torch.load(args.model_path, map_location=device))
     model.eval()
     model = model.to(device)
 
