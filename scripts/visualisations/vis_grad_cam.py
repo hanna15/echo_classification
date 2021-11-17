@@ -103,15 +103,6 @@ def get_save_grad_cam_images(data_loader, model, cam, device, subset='valid'):
             if args.save_video:
                 vs = VideoSaver(video_id, all_frames)  # Use default fps and max_frames
                 vs.save_video()
-                # size = (all_frames[0].shape[0], all_frames[0].shape[1])
-                # video_dir = 'vis_videos'
-                # os.makedirs(video_dir, exist_ok=True)
-                # result = cv2.VideoWriter(os.path.joinvideo_dir, f'{sample_name}_{corr}_{label}.avi',
-                #                          cv2.VideoWriter_fourcc(*'MJPG'), 24, size)
-                # for frame in all_frames[0:]:
-                #     result.write(frame)
-                # result.release()
-                # cv2.destroyAllWindows()
         except:
             print(f'failed for sample {sample_name}, max is {img.max()}, min is {img.min()}')
 
