@@ -362,6 +362,8 @@ def save_model_and_res(model, run_name, target_lst, pred_lst, val_target_lst, va
     res_dir = os.path.join(BASE_RES_DIR, run_name, base_name)
     model_dir = os.path.join(BASE_MODEL_DIR, run_name)
     os.makedirs(res_dir, exist_ok=True)
+    if not os.path.exists(res_dir): # Also add this, bc in cluster sometimes the ohter one is not working
+        os.makedirs(res_dir)
     os.makedirs(model_dir, exist_ok=True)
     model_file_name = base_name + '.pt'
     targ_file_name = 'targets.npy'
