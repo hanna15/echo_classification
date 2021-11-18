@@ -8,12 +8,14 @@ from medcam import medcam
 from utils.transforms2 import get_transforms
 from echo_ph.data import EchoDataset
 from echo_ph.models.resnet_3d import get_resnet3d_18, get_resnet3d_50
+from echo_ph.visual.video_saver import VideoSaver
 
 parser = ArgumentParser(
     description='Arguments for visualising 3D grad cam',
     formatter_class=ArgumentDefaultsHelpFormatter)
 parser.add_argument('--model_path', default=None, help='set to path of a model state dict, to evaluate on. '
                                                        'If None, use resnet18 pretrained on Imagenet only.')
+parser.add_argument('--out_dir', default='grad_cam_3d', help='Name of directory storing the results')
 parser.add_argument('--model', default='r3d_50', choices=['r2plus1d_18', 'mc3_18', 'r3d_18', 'r3d_50'],
                     help='What model architecture to use.')
 parser.add_argument('--label_type', default='2class_drop_ambiguous',
@@ -35,17 +37,27 @@ parser.add_argument('--crop', action='store_true', help='If crop to corners')
 parser.add_argument('--train_set', action='store_true', help='Also get grad cam for the images in the training set, '
                                                              'with random augmentation (type 3)')
 
+parser.add_argument('--video_ids', default=None, nargs='+', type=int,
+                    help='Instead of getting results acc.to index file, get results for specific video ids')
+
 # Temporal param
 parser.add_argument('--clip_len', type=int, default=12, help='How many frames to select per video')
 parser.add_argument('--period', type=int, default=1, help='Sample period, sample every n-th frame')
 parser.add_argument('--zip', action='store_true', help='Zip the resulting dir')
+parser.add_argument('--save_video_clips', action='store_true', help='Save individual video clips')
+parser.add_argument('--save_video', action='store_true', help='Save entire vide, batching up video clips')
+parser.add_argument('--all_frames', action='store_true', default=None,
+                    help='Get all frames of a video')
 
 
 def get_data_loader(train=False):
-    idx_dir = 'index_files' if args.k is None else os.path.join('index_files', 'k' + str(args.k))
-    idx_file_base_name = 'train_samples_' if train else 'valid_samples_'
-    idx_file_end = '' if args.fold is None else '_' + str(args.fold)
-    index_file_path = os.path.join(idx_dir, idx_file_base_name + args.label_type + idx_file_end + '.npy')
+    if args.video_ids:
+        index_file_path = None
+    else:
+        idx_dir = 'index_files' if args.k is None else os.path.join('index_files', 'k' + str(args.k))
+        idx_file_base_name = 'train_samples_' if train else 'valid_samples_'
+        idx_file_end = '' if args.fold is None else '_' + str(args.fold)
+        index_file_path = os.path.join(idx_dir, idx_file_base_name + args.label_type + idx_file_end + '.npy')
     label_path = os.path.join('label_files', 'labels_' + args.label_type + '.pkl')
     aug_type = 4 if train else 0
     transforms = get_transforms(index_file_path, dataset_orig_img_scale=args.scale, resize=224,
@@ -54,30 +66,75 @@ def get_data_loader(train=False):
     dataset = EchoDataset(index_file_path, label_path, cache_dir=args.cache_dir,
                           transform=transforms, scaling_factor=args.scale, procs=args.n_workers,
                           view=args.view,  num_rand_frames=args.num_rand_frames, temporal=True,
-                          clip_len=args.clip_len, period=args.period)
+                          clip_len=args.clip_len, period=args.period, video_ids=args.video_ids,
+                          all_frames=args.all_frames)
     data_loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=args.n_workers)
     return data_loader
 
+import cv2
+import matplotlib.cm as cm
+
+
+def normalize(x):
+    """Normalizes data both numpy or tensor data to range [0,1]."""
+    if isinstance(x, torch.Tensor):
+        if torch.min(x) == torch.max(x):
+            return torch.zeros(x.shape)
+        return (x-torch.min(x))/(torch.max(x)-torch.min(x))
+    else:
+        if np.min(x) == np.max(x):
+            return np.zeros(x.shape)
+        return (x - np.min(x)) / (np.max(x) - np.min(x))
+
+
+def overlay(raw_input, attention_map):
+    attention_map = attention_map
+    raw_input = raw_input
+    raw_input = raw_input.transpose(1, 2, 0)
+    attention_map = normalize(attention_map.astype(np.float))
+    if np.max(raw_input) > 1:
+        raw_input = raw_input.astype(float)
+        raw_input /= 255
+    attention_map = cv2.resize(attention_map, tuple(np.flip(raw_input.shape[:2])))
+    attention_map = cm.jet_r(attention_map)[..., :3]
+    attention_map = (attention_map.astype(float) + raw_input.astype(float)) / 2
+    attention_map *= 255
+    return attention_map.astype(np.uint8)
+
 
 def get_save_grad_cam_images(data_loader, model, device, subset='valid'):
-    base_res_dir = os.path.join('3d_plotsX', subset)
+    base_res_dir = os.path.join(args.out_dir, subset)
     os.makedirs(base_res_dir, exist_ok=True)
+    video_clips = {}
     for batch in data_loader:
         inp = batch['frame'].to(device)
         inp = inp.transpose(2, 1)  # Reshape to: (batch_size, channels, seq-len, W, H)
         sample_name = batch['sample_name'][0]
+        video_id = int(sample_name.split('_')[0])
         label = batch['label'][0].item()
         out, att = model(inp)
+        # out = model(inp)
+        # medcam.save(att[0][0], '3d_plots/bla', heatmap=True, raw_input=inp[0][0])
         pred = torch.max(out, dim=1).indices[0].item()
         corr = 'CORR' if label == pred else 'WRONG'
         video = np.swapaxes(inp, 1, 2)[0]
-        att_video = np.swapaxes(att, 1, 2)[0]
+        att_video_clip = np.swapaxes(att, 1, 2)[0]
+        medcam.save(att_video_clip[0].squeeze(), 'TRY', heatmap=True, raw_input=video[0])
+        # if args.save_video_clips:
+        #     vs = VideoSaver(f'{sample_name}_{corr}_{label}', att_video_clip)
+        #     vs.save_video()
         print('len video', len(video))
         sample_dir = os.path.join(base_res_dir, sample_name)
         os.makedirs(sample_dir, exist_ok=True)
+        if video_id not in video_clips:
+            video_clips[video_id] = (att_video_clip.squeeze(1).cpu().detach().numpy(), video.cpu().detach().numpy())
+        else:
+            extended_clip = np.append(video_clips[video_id][0], att_video_clip.squeeze(1).cpu().detach().numpy(), axis=0)
+            extended_video = np.append(video_clips[video_id][1], video.cpu().detach().numpy(), axis=0)
+            video_clips[video_id] = (extended_clip, extended_video)
         for i in range(len(video)):
             img = video[i]
-            att_img = att_video[i]
+            att_img = att_video_clip[i]
             plt.imshow(img.squeeze().cpu(), cmap='Greys_r')
             plt.imshow(att_img.squeeze().cpu(), cmap='jet', alpha=0.5)
             title = f'{sample_name}-{i}-{corr}-{label}.jpg'
@@ -85,6 +142,11 @@ def get_save_grad_cam_images(data_loader, model, device, subset='valid'):
             plt.savefig(os.path.join(sample_dir, 'frame_' + str(i) + '.png'))
     if args.zip:
         os.system(f'zip -r {base_res_dir}.zip {base_res_dir}')
+    if args.save_video:
+        for video_id in video_clips:
+            x = [overlay(vid, att_vid) for (att_vid, vid) in zip(video_clips[video_id][0], video_clips[video_id][1])]
+            vs = VideoSaver(video_id, x, out_dir=args.out_dir)
+            vs.save_video()
 
 
 def main():
@@ -99,6 +161,7 @@ def main():
     if args.model_path is not None:
         model.load_state_dict(torch.load(args.model_path, map_location=device))
     model = medcam.inject(model, return_attention=True, backend='gcam')
+    # model = medcam.inject(model, backend='gcam', save_maps=True, output_dir='3d_plots')
     model.eval()
     get_save_grad_cam_images(val_data_loader, model, device, subset='valid')
     if args.train_set:

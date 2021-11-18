@@ -142,7 +142,7 @@ parser.add_argument('--crop', action='store_true', help='set this flag to crop t
 parser.add_argument('--temporal', action='store_true', help='set this flag to predict on video clips')
 parser.add_argument('--clip_len', type=int, default=0, help='How many frames to select per video')
 parser.add_argument('--period', type=int, default=1, help='Sample period, sample every n-th frame')
-
+parser.add_argument('--multi_gpu', action='store_true', help='If use more than one GPU in parallel')
 
 BASE_MODEL_DIR = 'models'
 
@@ -362,11 +362,14 @@ def save_model_and_res(model, run_name, target_lst, pred_lst, val_target_lst, va
     res_dir = os.path.join(BASE_RES_DIR, run_name, base_name)
     model_dir = os.path.join(BASE_MODEL_DIR, run_name)
     os.makedirs(res_dir, exist_ok=True)
+    if not os.path.exists(res_dir): # Also add this, bc in cluster sometimes the ohter one is not working
+        os.makedirs(res_dir)
     os.makedirs(model_dir, exist_ok=True)
     model_file_name = base_name + '.pt'
     targ_file_name = 'targets.npy'
     pred_file_name = 'preds.npy'
     sample_file_names = 'samples.npy'
+
 
     # Just before saving the model, delete older versions of the model and results, to save space
     for model_file in os.listdir(model_dir):
@@ -376,7 +379,10 @@ def save_model_and_res(model, run_name, target_lst, pred_lst, val_target_lst, va
             res_dir_to_del = os.path.join(BASE_RES_DIR, run_name, model_file[:-3])
             if os.path.exists(res_dir_to_del):
                 os.system(f'rm -r {res_dir_to_del}')
-    torch.save(model.state_dict(), os.path.join(model_dir, model_file_name))
+    if args.multi_gpu: # after wrapping the model in nn.DataParallel, original model will be accessible via model.module
+        torch.save(model.module.state_dict(), os.path.join(model_dir, model_file_name))
+    else:
+        torch.save(model.state_dict(), os.path.join(model_dir, model_file_name))
     np.save(os.path.join(res_dir, 'train_' + targ_file_name), target_lst)
     np.save(os.path.join(res_dir, 'train_' + pred_file_name), pred_lst)
     np.save(os.path.join(res_dir, 'train_' + sample_file_names), sample_names)
@@ -585,6 +591,9 @@ def main():
             model = ConvNet(num_classes=len(train_dataset.labels), dropout_val=args.dropout).to(device)
         else:
             model = SimpleConvNet(num_classes=len(train_dataset.labels)).to(device)
+    if args.multi_gpu:
+        print("Training with multiple GPU")
+        model = nn.DataParallel(model, dim=0)  # As we have batch-first
     os.makedirs(BASE_MODEL_DIR, exist_ok=True)  # create model results dir, if not exists
     os.makedirs(BASE_RES_DIR, exist_ok=True)  # create results dir, if not exists
 
