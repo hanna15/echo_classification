@@ -138,7 +138,8 @@ def get_save_grad_cam_images(data_loader, model, device, subset='valid'):
         else:
             extended_attention = np.append(video_clips[video_id][0], att_clip, axis=0)
             extended_video = np.append(video_clips[video_id][1], raw_vid_clip, axis=0)
-            video_clips[video_id] = (extended_attention, extended_video, title)
+            extended_title = np.append(video_clips[video_id][2], title)
+            video_clips[video_id] = (extended_attention, extended_video, extended_title)
         if args.save_frames:
             for i in range(len(video)):
                 img = video[i]
