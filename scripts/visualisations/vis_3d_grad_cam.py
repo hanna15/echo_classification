@@ -49,6 +49,9 @@ parser.add_argument('--save_video', action='store_true', help='Save entire video
 parser.add_argument('--save_frames', action='store_true', help='Save individual frames')
 parser.add_argument('--all_frames', action='store_true', default=None,
                     help='Get all frames of a video')
+parser.add_argument('--max_frame', type=int, default=50,
+                    help='Only valid in combination with all_frames flag. '
+                         'Get sequential frames of a video from frame 0, but limit len to max_frame')
 
 
 def get_data_loader(train=False):
@@ -68,7 +71,7 @@ def get_data_loader(train=False):
                           transform=transforms, scaling_factor=args.scale, procs=args.n_workers,
                           view=args.view,  num_rand_frames=args.num_rand_frames, temporal=True,
                           clip_len=args.clip_len, period=args.period, video_ids=args.video_ids,
-                          all_frames=args.all_frames)
+                          all_frames=args.all_frames, max_frame=args.max_frame)
     data_loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=args.n_workers)
     return data_loader
 
