@@ -45,7 +45,8 @@ parser.add_argument('--clip_len', type=int, default=12, help='How many frames to
 parser.add_argument('--period', type=int, default=1, help='Sample period, sample every n-th frame')
 parser.add_argument('--zip', action='store_true', help='Zip the resulting dir')
 parser.add_argument('--save_video_clips', action='store_true', help='Save individual video clips')
-parser.add_argument('--save_video', action='store_true', help='Save entire vide, batching up video clips')
+parser.add_argument('--save_video', action='store_true', help='Save entire video, batching up video clips')
+parser.add_argument('--save_frames', action='store_true', help='Save individual frames')
 parser.add_argument('--all_frames', action='store_true', default=None,
                     help='Get all frames of a video')
 
@@ -117,36 +118,47 @@ def get_save_grad_cam_images(data_loader, model, device, subset='valid'):
         # medcam.save(att[0][0], '3d_plots/bla', heatmap=True, raw_input=inp[0][0])
         pred = torch.max(out, dim=1).indices[0].item()
         corr = 'CORR' if label == pred else 'WRONG'
+        title = f'{sample_name}-{corr}-{label}.jpg'
         video = np.swapaxes(inp, 1, 2)[0]
         att_video_clip = np.swapaxes(att, 1, 2)[0]
-        medcam.save(att_video_clip[0].squeeze(), 'TRY', heatmap=True, raw_input=video[0])
+        # medcam.save(att_video_clip[0].squeeze(), 'TRY', heatmap=True, raw_input=video[0])
         # if args.save_video_clips:
         #     vs = VideoSaver(f'{sample_name}_{corr}_{label}', att_video_clip)
         #     vs.save_video()
         print('len video', len(video))
         sample_dir = os.path.join(base_res_dir, sample_name)
         os.makedirs(sample_dir, exist_ok=True)
+        att_clip = att_video_clip.squeeze(1).cpu().detach().numpy()
+        raw_vid_clip = video.cpu().detach().numpy()
         if video_id not in video_clips:
-            video_clips[video_id] = (att_video_clip.squeeze(1).cpu().detach().numpy(), video.cpu().detach().numpy())
+            video_clips[video_id] = (att_clip, raw_vid_clip, title)
         else:
-            extended_clip = np.append(video_clips[video_id][0], att_video_clip.squeeze(1).cpu().detach().numpy(), axis=0)
-            extended_video = np.append(video_clips[video_id][1], video.cpu().detach().numpy(), axis=0)
-            video_clips[video_id] = (extended_clip, extended_video)
-        for i in range(len(video)):
-            img = video[i]
-            att_img = att_video_clip[i]
-            plt.imshow(img.squeeze().cpu(), cmap='Greys_r')
-            plt.imshow(att_img.squeeze().cpu(), cmap='jet', alpha=0.5)
-            title = f'{sample_name}-{i}-{corr}-{label}.jpg'
-            plt.title(title)
-            plt.savefig(os.path.join(sample_dir, 'frame_' + str(i) + '.png'))
-    if args.zip:
-        os.system(f'zip -r {base_res_dir}.zip {base_res_dir}')
+            extended_attention = np.append(video_clips[video_id][0], att_clip, axis=0)
+            extended_video = np.append(video_clips[video_id][1], raw_vid_clip, axis=0)
+            video_clips[video_id] = (extended_attention, extended_video, title)
+        if args.save_frames:
+            for i in range(len(video)):
+                img = video[i]
+                att_img = att_video_clip[i]
+                plt.imshow(img.squeeze().cpu(), cmap='Greys_r')
+                plt.imshow(att_img.squeeze().cpu(), cmap='jet', alpha=0.5)
+                title = f'{sample_name}-{i}-{corr}-{label}.jpg'
+                plt.title(title)
+                plt.savefig(os.path.join(sample_dir, 'frame_' + str(i) + '.png'))
+        if args.zip:
+            os.system(f'zip -r {base_res_dir}.zip {base_res_dir}')
     if args.save_video:
         for video_id in video_clips:
             x = [overlay(vid, att_vid) for (att_vid, vid) in zip(video_clips[video_id][0], video_clips[video_id][1])]
-            vs = VideoSaver(video_id, x, out_dir=args.out_dir)
-            vs.save_video()
+            frame_titles = video_clips[video_id][2]  # get titles for frames in video, to extract no. corrs & label
+            frame_corrs = np.asarray([frame_title.split('-')[1] for frame_title in frame_titles])
+            ratio_corr = (frame_corrs == 'CORR').sum() / len(frame_titles)
+            print('ratio corr', ratio_corr)
+            if ratio_corr > 0.91 or ratio_corr < 0.3:
+                true_label = frame_titles[0].split('-')[-1][:-4]
+                video_title = f'{video_id}-{ratio_corr:.2f}-{true_label}.jpg'
+                vs = VideoSaver(video_title, x, out_dir=args.out_dir + '_video')
+                vs.save_video()
 
 
 def main():
