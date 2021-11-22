@@ -10,6 +10,45 @@ from heart_echo.Processing import ImageUtilities, VideoUtilities
 from heart_echo.Helpers import Helpers
 from echo_ph.data.segmentation import SegmentationAnalyser
 import matplotlib.pyplot as plt
+import cv2
+
+
+def load_dynamic_video(filename: str) -> np.ndarray:
+    """Loads a video from a file.
+
+    Args:
+        filename (str): filename of video
+
+    Returns:
+        A np.ndarray with dimensions (channels=3, frames, height, width). The
+        values will be uint8's ranging from 0 to 255.
+
+    Raises:
+        FileNotFoundError: Could not find `filename`
+        ValueError: An error occurred while reading the video
+    """
+
+    if not os.path.exists(filename):
+        raise FileNotFoundError(filename)
+    capture = cv2.VideoCapture(filename)
+
+    frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
+    frame_width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
+    frame_height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+    v = np.zeros((frame_count, frame_height, frame_width, 3), np.uint8)
+
+    for count in range(frame_count):
+        ret, frame = capture.read()
+        if not ret:
+            raise ValueError("Failed to load frame #{} of {}.".format(count, filename))
+
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        v[count, :, :] = frame
+
+    # v = v.transpose((3, 0, 1, 2))
+    v = VideoUtilities.convert_to_gray(v)
+    return v.astype(np.uint8)
 
 
 def load_and_process_video(video_path):
@@ -28,7 +67,8 @@ def load_and_process_video(video_path):
 class EchoDataset(Dataset):
     def __init__(self, index_file_path, label_file_path, videos_dir=None, cache_dir=None,
                  transform=None, scaling_factor=0.5, procs=3, visualise_frames=False, percentile=90, view='KAPAP',
-                 min_expansion=False, num_rand_frames=None, segm_masks=False, temporal=False, period=1, clip_len=0):
+                 min_expansion=False, num_rand_frames=None, segm_masks=False, temporal=False, period=1, clip_len=0,
+                 all_frames=False, max_frame=None, video_ids=None, dynamic=False):
         """
         Dataset for echocardiogram processing and classification in PyTorch.
         :param index_file_path: Path to a numpy file, listing all sample names to use in this dataset.
@@ -44,6 +84,7 @@ class EchoDataset(Dataset):
         :param num_rand_frames: If None, get min/max expansion frames. Else, set to numner of random frames to pick per video
         """
 
+        self.dynamic = dynamic
         self.frames = []
         self.targets = []
         self.sample_names = []
@@ -62,19 +103,23 @@ class EchoDataset(Dataset):
         self.max_percentile = percentile
         self.min_expansion = min_expansion
         self.num_rand_frames = num_rand_frames
+        self.all_frames = all_frames
+        self.max_frame = max_frame
         self.view = view
         self.segm_masks = segm_masks
         self.view_to_segmodel_view = {  # When training on given view, what segmentation pretrained model view to use
             'KAPAP': 'psax',
             'CV': 'a4c'
         }
-
-        samples = np.load(index_file_path)
+        if index_file_path is not None:
+            samples = np.load(index_file_path)
+        else:
+            samples = video_ids
         t = time()
         with mp.Pool(processes=procs) as pool:
             for frames, label, sample_names in pool.map(self.load_sample, samples):
                 if frames is not None and label is not None and sample_names is not None:
-                    for frame, sample_name in zip(frames, sample_names):  # each frame becomes an individual sample (with the same label)
+                    for frame, sample_name in zip(frames, sample_names):  # Each frame becomes an individual sample (with the same label)
                         self.frames.append(frame)
                         self.targets.append(label)
                         self.sample_names.append(sample_name)
@@ -91,7 +136,16 @@ class EchoDataset(Dataset):
         for label, cnt in zip(self.labels, cnts):  # Print number of occurrences of each label
             print(label, ':', cnt)
 
-    def get_random_frame_nrs(self, total_len):
+    def get_frame_nrs(self, total_len):
+        if self.all_frames:
+            max_frame = min(total_len, self.max_frame)  # Entire video, or up to max frame
+            if self.temporal:
+                # get starting points, s.t. start + (clip_len * sp) covers all video
+                max_frame = max_frame - (self.clip_len * self.period)
+                return np.asarray(range(0, max_frame, self.clip_len * self.period))
+            # Else, if get all frames, but NOT temporal - just return sequence of corr len
+            return np.asarray(range(0, max_frame))
+        # Get random frames
         max_frame = total_len - (self.clip_len * self.period)
         frame_nrs = np.random.randint(0, max_frame, self.num_rand_frames)
         return frame_nrs
@@ -120,7 +174,10 @@ class EchoDataset(Dataset):
         :param sample: Sample from the file list paths.
         :return: (line regions, parsed program, sample name)
         """
-        if self.cache_dir is None:  # Use raw videos, as no cached processed videos provided
+        if self.dynamic:
+            curr_video_path = os.path.join('/Users/hragnarsd/Documents/masters/dynamic/a4c-video-dir/Videos',
+                                           sample + '.avi')  # TODO: Don't have it hard-coed
+        elif self.cache_dir is None:  # Use raw videos, as no cached processed videos provided
             curr_video_path = os.path.join(self.videos_dir, str(sample) + self.view + '.mp4')  # TODO: Generalise
         else:  # Use cached videos
             curr_video_path = os.path.join(self.cache_dir, str(sample) + self.view + '.npy')  # TODO: Generalise
@@ -139,20 +196,22 @@ class EchoDataset(Dataset):
                                         model_view=self.view_to_segmodel_view[self.view])
             segm_mask = segm.get_segm_mask()
             if self.num_rand_frames:
-                frame_nrs = self.get_random_frame_nrs(total_len=len(segm_mask))
+                frame_nrs = self.get_frame_nrs(total_len=len(segm_mask))
             else:
                 frame_nrs = segm.extract_max_percentile_frames(percentile=self.max_percentile,
                                                                min_exp=self.min_expansion)
             frames = self.get_frames(frame_nrs, segm_mask)
         else:  # Train on video frames
             # === Get video ==
-            if self.cache_dir is None:  # load raw video and process
+            if self.dynamic:
+                segmented_video = load_dynamic_video(curr_video_path).astype(np.float32)
+            elif self.cache_dir is None:  # load raw video and process
                 segmented_video = load_and_process_video(curr_video_path)
             else:  # load already processed numpy video
                 segmented_video = np.load(curr_video_path)
             # === Get frames for video ===
-            if self.num_rand_frames:
-                frame_nrs = self.get_random_frame_nrs(total_len=len(segmented_video))
+            if self.num_rand_frames or self.all_frames:
+                frame_nrs = self.get_frame_nrs(total_len=len(segmented_video))
             else:  # Get max or min expansion frames, acc. to segmentation percentile
                 sample_w_ending = str(sample) + self.view
                 # Todo: Generalise segm result dir
@@ -173,6 +232,7 @@ class EchoDataset(Dataset):
         label = self.targets[idx]
         sample_name = self.sample_names[idx]
         frame = self.frames[idx]
+        frame = frame.astype(np.uint8)
         if self.temporal:
             frame = list(frame)
         s = (frame, sample_name.split('_')[0] + self.view)
