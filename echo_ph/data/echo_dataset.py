@@ -138,7 +138,10 @@ class EchoDataset(Dataset):
 
     def get_frame_nrs(self, total_len):
         if self.all_frames:
-            max_frame = min(total_len, self.max_frame)  # Entire video, or up to max frame
+            if self.max_frame is None:
+                max_frame = total_len
+            else:
+                max_frame = min(total_len, self.max_frame)  # Entire video, or up to max frame
             if self.temporal:
                 # get starting points, s.t. start + (clip_len * sp) covers all video
                 max_frame = max_frame - (self.clip_len * self.period)
