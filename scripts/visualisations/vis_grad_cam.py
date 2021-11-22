@@ -125,7 +125,7 @@ def get_save_grad_cam_images(data_loader, model, cam, device, subset='valid'):
                 frame_corrs = np.asarray([frame_title.split('-')[1] for frame_title in frame_titles])
                 ratio_corr = (frame_corrs == 'CORR').sum() / len(frame_titles)
                 print('ratio corr', ratio_corr)
-                if ratio_corr > 0.95 or ratio_corr < 0.3:
+                if ratio_corr > 0.91 or ratio_corr < 0.3:
                     true_label = frame_titles[0].split('-')[-1][:-4]
                     video_title = f'{video_id}-{ratio_corr:.2f}-{true_label}.jpg'
                     out_dir = output_dir + '_video'
