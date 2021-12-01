@@ -13,7 +13,7 @@ import wandb
 from echo_ph.data.echo_dataset import EchoDataset
 from echo_ph.models.conv_nets import ConvNet, SimpleConvNet
 from echo_ph.models.resnets import resnet_simpler, get_resnet18
-from echo_ph.models.resnet_3d import get_resnet3d_18, get_resnet3d_50
+from echo_ph.models.resnet_3d import get_resnet3d_18, get_resnet3d_50, DCNN3D_ConvLSTM
 from echo_ph.data.ph_labels import long_label_type_to_short
 from utils.transforms2 import get_transforms
 from sklearn.metrics import f1_score, accuracy_score, balanced_accuracy_score, roc_auc_score
@@ -541,16 +541,19 @@ def main():
     train_index_file_path = os.path.join(idx_dir, 'train_samples_' + args.label_type + idx_file_end + '.npy')
     valid_index_file_path = os.path.join(idx_dir, 'valid_samples_' + args.label_type + idx_file_end + '.npy')
 
+    size = 224
+    if args.temporal: # just for now => try it (!)
+        size = 112
     if args.augment and not args.load_model:  # All augmentations
-        train_transforms = get_transforms(train_index_file_path, dataset_orig_img_scale=args.scaling_factor, resize=224,
+        train_transforms = get_transforms(train_index_file_path, dataset_orig_img_scale=args.scaling_factor, resize=size,
                                           augment=args.aug_type, fold=args.fold, valid=False, view=args.view,
                                           crop_to_corner=args.crop, segm_mask_only=args.segm_masks)
     else:
-        train_transforms = get_transforms(train_index_file_path, dataset_orig_img_scale=args.scaling_factor, resize=224,
+        train_transforms = get_transforms(train_index_file_path, dataset_orig_img_scale=args.scaling_factor, resize=size,
                                           augment=0, fold=args.fold, valid=False, view=args.view,
                                           crop_to_corner=args.crop,
                                           segm_mask_only=args.segm_masks)
-    valid_transforms = get_transforms(valid_index_file_path, dataset_orig_img_scale=args.scaling_factor, resize=224,
+    valid_transforms = get_transforms(valid_index_file_path, dataset_orig_img_scale=args.scaling_factor, resize=size,
                                       augment=0, fold=args.fold, valid=True, view=args.view,
                                       crop_to_corner=args.crop,
                                       segm_mask_only=args.segm_masks)
