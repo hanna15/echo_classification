@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 from torchvision import models
-from echo_ph.models.conv_lstm import ConvLSTM
+# from echo_ph.models.conv_lstm import ConvLSTM
 from echo_ph.models.non_local import NLBlockND, MapBasedAtt
 import os
 
@@ -41,22 +41,22 @@ def get_resnet3d_18(num_classes=2, model_type='r2plus1d_18', pretrained=True):
     return model
 
 
-class DCNN3D_ConvLSTM(nn.Module):
-    def __init__(self):
-        super(DCNN3D_ConvLSTM, self).__init__()
-        model = models.video.__dict__['r3d_18'](pretrained=True)
-        in_channels = 1
-        model.stem[0] = torch.nn.Conv3d(in_channels, model.stem[0].out_channels, kernel_size=(1, 7, 7),
-                                        stride=(1, 2, 2),
-                                        padding=(0, 3, 3), bias=False)
-        self.cnn_3d = nn.Sequential(*[model.stem, model.layer1, model.layer2])
-        self.conv_lstm = ConvLSTM(input_dim=3, hidden_dim=[64, 64, 128], kernel_size=(3, 3),
-                                  num_layers=3, batch_first=True, bias=True, return_all_layers=False)
-
-    def forward(self, x):
-        x = self.cnn_3d(x)
-        x = self.conv_lstm(x)  # Input: A tensor of size B, T, C, H, W
-        return x
+# class DCNN3D_ConvLSTM(nn.Module):
+#     def __init__(self):
+#         super(DCNN3D_ConvLSTM, self).__init__()
+#         model = models.video.__dict__['r3d_18'](pretrained=True)
+#         in_channels = 1
+#         model.stem[0] = torch.nn.Conv3d(in_channels, model.stem[0].out_channels, kernel_size=(1, 7, 7),
+#                                         stride=(1, 2, 2),
+#                                         padding=(0, 3, 3), bias=False)
+#         self.cnn_3d = nn.Sequential(*[model.stem, model.layer1, model.layer2])
+#         self.conv_lstm = ConvLSTM(input_dim=3, hidden_dim=[64, 64, 128], kernel_size=(3, 3),
+#                                   num_layers=3, batch_first=True, bias=True, return_all_layers=False)
+#
+#     def forward(self, x):
+#         x = self.cnn_3d(x)
+#         x = self.conv_lstm(x)  # Input: A tensor of size B, T, C, H, W
+#         return x
 
 
 class Res3DAttention(nn.Module):
