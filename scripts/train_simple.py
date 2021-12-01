@@ -13,7 +13,7 @@ import wandb
 from echo_ph.data.echo_dataset import EchoDataset
 from echo_ph.models.conv_nets import ConvNet, SimpleConvNet
 from echo_ph.models.resnets import resnet_simpler, get_resnet18
-from echo_ph.models.resnet_3d import get_resnet3d_18, get_resnet3d_50
+from echo_ph.models.resnet_3d import get_resnet3d_18, get_resnet3d_50, Res3DAttention
 from echo_ph.data.ph_labels import long_label_type_to_short
 from utils.transforms2 import get_transforms
 from sklearn.metrics import f1_score, accuracy_score, balanced_accuracy_score, roc_auc_score
@@ -105,6 +105,8 @@ parser.add_argument('--load_model', action='store_true',
 parser.add_argument('--model', default='resnet', choices=['resnet', 'res_simple', 'conv', 'simple_conv',
                                                           'r2plus1d_18', 'mc3_18', 'r3d_18', 'r3d_50'],
                     help='What model architecture to use.')
+parser.add_argument('--self_attention', action='store_true', help='If use self-attention (non-local block)')
+parser.add_argument('--map_attention', action='store_true', help='If use map-based attention')
 parser.add_argument('--dropout', type=float, default=0.5, help='Dropout value for those model who use dropout')
 parser.add_argument('--optimizer', default='adam', choices=['adam', 'adamw'], help='What optimizer to use.')
 parser.add_argument('--batch_size', type=int, default=128, help='Batch size for training')
@@ -282,6 +284,11 @@ def run_batch(batch, model, criterion=None, binary=False):
     targets = batch["label"].to(dev)
     sample_names = batch["sample_name"]
     outputs = model(input)
+    if isinstance(outputs, tuple):
+        attention = outputs[1]  # The later value is the attention (for visualisation)
+        outputs = outputs[0]  # The prev value is the actual output for predictions
+    else:
+        attention = None
     # out = []
     # for _ in range(len(input)):
     #     rand_decision = random.randint(0, 1)
@@ -301,7 +308,7 @@ def run_batch(batch, model, criterion=None, binary=False):
             loss = criterion(outputs, targets)
     else:  # when just evaluating, no loss
         loss = None
-    return loss, outputs, targets, sample_names
+    return loss, outputs, targets, sample_names, attention
 
 
 def evaluate(model, model_name, train_loader, valid_loader, data_len, valid_len, binary=False):
@@ -341,7 +348,7 @@ def evaluate(model, model_name, train_loader, valid_loader, data_len, valid_len,
 
 
 def save_model_and_res(model, run_name, target_lst, pred_lst, val_target_lst, val_pred_lst, sample_names,
-                       val_sample_names, epoch=None, fold=None):
+                       val_sample_names, attention=[], val_attention=[], epoch=None, fold=None):
     """
     Save the given model, as well as the outputs, targets & metrics
     :param model: The model to save
@@ -362,13 +369,14 @@ def save_model_and_res(model, run_name, target_lst, pred_lst, val_target_lst, va
     res_dir = os.path.join(BASE_RES_DIR, run_name, base_name)
     model_dir = os.path.join(BASE_MODEL_DIR, run_name)
     os.makedirs(res_dir, exist_ok=True)
-    if not os.path.exists(res_dir): # Also add this, bc in cluster sometimes the ohter one is not working
+    if not os.path.exists(res_dir):  # Also add this, bc in cluster sometimes the other one is not working
         os.makedirs(res_dir)
     os.makedirs(model_dir, exist_ok=True)
     model_file_name = base_name + '.pt'
     targ_file_name = 'targets.npy'
     pred_file_name = 'preds.npy'
     sample_file_names = 'samples.npy'
+    att_file_names = 'attention.npy'
 
 
     # Just before saving the model, delete older versions of the model and results, to save space
@@ -389,6 +397,10 @@ def save_model_and_res(model, run_name, target_lst, pred_lst, val_target_lst, va
     np.save(os.path.join(res_dir, 'val_' + targ_file_name), val_target_lst)
     np.save(os.path.join(res_dir, 'val_' + pred_file_name), val_pred_lst)
     np.save(os.path.join(res_dir, 'val_' + sample_file_names), val_sample_names)
+    if len(attention) > 0:
+        np.save(os.path.join(res_dir, 'train_' + att_file_names), attention)
+    if len(val_attention) > 0:
+        np.save(os.path.join(res_dir, 'val_' + att_file_names), val_attention)
 
 
 def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run_name, optimizer, weights=None,
@@ -414,16 +426,20 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
         epoch_targets = []
         epoch_outs = []
         epoch_samples = []
+        epoch_attention = []
         epoch_valid_targets = []
         epoch_valid_samples = []
         epoch_valid_outs = []
+        epoch_valid_attention = []
 
         # TRAIN
         model.train()
         for train_batch in train_loader:
-            loss, out, targets, sample_names = run_batch(train_batch, model, criterion, binary)
+            loss, out, targets, sample_names, att = run_batch(train_batch, model, criterion, binary)
             epoch_samples.extend(sample_names)
             epoch_targets.extend(targets)
+            if att is not None:
+                epoch_attention.extend(att.cpu().detach().numpy())
             epoch_outs.extend(out.cpu().detach().numpy())
             epoch_loss += loss.item() * args.batch_size
             optimizer.zero_grad()
@@ -435,9 +451,11 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
         with no_grad():
             model.eval()
             for valid_batch in valid_loader:
-                val_loss, val_out, val_targets, val_sample_names = run_batch(valid_batch, model, criterion, binary)
+                val_loss, val_out, val_targets, val_sample_names, val_att = run_batch(valid_batch, model, criterion, binary)
                 epoch_valid_samples.extend(val_sample_names)
                 epoch_valid_targets.extend(val_targets)
+                if val_att is not None:
+                    epoch_valid_attention.append(val_att.cpu().detach().numpy())
                 # epoch_valid_preds.extend(torch.max(val_out, dim=1)[1])
                 epoch_valid_outs.extend(val_out.cpu().detach().numpy())
                 epoch_valid_loss += val_loss.item() * args.batch_size
@@ -498,8 +516,8 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
                                 #                    pred_lst_valid, epoch_samples, epoch_valid_samples,
                                 #                    epoch=epoch, fold=args.fold)
                                 save_model_and_res(model, run_name, target_lst, epoch_outs, targ_lst_valid,
-                                                   epoch_valid_outs, epoch_samples, epoch_valid_samples,
-                                                   epoch=epoch, fold=args.fold)
+                                                   epoch_valid_outs, epoch_samples, epoch_valid_samples, epoch_attention,
+                                                   epoch_valid_attention, epoch=epoch, fold=args.fold)
                             saved_model_this_round = True
                         else:
                             num_fails_this_round += 1
@@ -581,8 +599,13 @@ def main():
     # Model & Optimizers
     if args.temporal:
         if args.model.endswith('18'):
-            model = get_resnet3d_18(num_classes=len(train_dataset.labels), pretrained=args.pretrained,
-                                    model_type=args.model).to(device)
+            if args.self_attention or args.map_attention:
+                att_type = 'self' if args.self_attention else 'map'
+                model = Res3DAttention(num_classes=len(train_dataset.labels), ch=1, w=size, h=size, t=args.clip_len,
+                                       att_type=att_type).to(device)
+            else:
+                model = get_resnet3d_18(num_classes=len(train_dataset.labels), pretrained=args.pretrained,
+                                        model_type=args.model).to(device)
         else:
             model = get_resnet3d_50(num_classes=len(train_dataset.labels), pretrained=args.pretrained).to(device)
     else:
