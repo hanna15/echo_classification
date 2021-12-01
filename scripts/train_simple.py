@@ -13,7 +13,7 @@ import wandb
 from echo_ph.data.echo_dataset import EchoDataset
 from echo_ph.models.conv_nets import ConvNet, SimpleConvNet
 from echo_ph.models.resnets import resnet_simpler, get_resnet18
-from echo_ph.models.resnet_3d import get_resnet3d_18, get_resnet3d_50, DCNN3D_ConvLSTM
+from echo_ph.models.resnet_3d import get_resnet3d_18, get_resnet3d_50
 from echo_ph.data.ph_labels import long_label_type_to_short
 from utils.transforms2 import get_transforms
 from sklearn.metrics import f1_score, accuracy_score, balanced_accuracy_score, roc_auc_score
