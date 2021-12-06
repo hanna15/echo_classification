@@ -175,6 +175,12 @@ def get_run_name():
                + k + '.lr_' + str(args.lr) + '.batch_' + str(args.batch_size) + wd + '.me_' + str(args.max_epochs)
     if args.segm_masks:
         run_name += 'SEGM'
+    if args.multi_gpu:
+        run_name += 'multi_gpu'
+    if args.self_attention:
+        run_name += 'self_att'
+    if args.map_attention:
+        run_name += 'map_att'
     if args.decay_factor > 0.0:
         run_name += str(args.decay_factor)  # only add to description if not default
     if args.decay_patience < 1000:
@@ -387,7 +393,7 @@ def save_model_and_res(model, run_name, target_lst, pred_lst, val_target_lst, va
             res_dir_to_del = os.path.join(BASE_RES_DIR, run_name, model_file[:-3])
             if os.path.exists(res_dir_to_del):
                 os.system(f'rm -r {res_dir_to_del}')
-    if args.multi_gpu: # after wrapping the model in nn.DataParallel, original model will be accessible via model.module
+    if args.multi_gpu:  # After wrapping the model in nn.DataParallel, original model will be accessible via model.module
         torch.save(model.module.state_dict(), os.path.join(model_dir, model_file_name))
     else:
         torch.save(model.state_dict(), os.path.join(model_dir, model_file_name))
