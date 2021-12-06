@@ -125,7 +125,8 @@ parser.add_argument('--early_stop', type=int, default=100,
 parser.add_argument('--pretrained', action='store_true', help='Set this flag to use pre-trained resnet')
 parser.add_argument('--eval_metrics', type=str, default=['f1/valid', 'b-accuracy/valid'], nargs='+',
                     help='Set this the metric you want to use for early stopping - you can choose multiple metrics. '
-                         'Choices: f1/valid, loss/valid, b-accuracy/valid, video-f1/valid, video-b-accuracy/valid')
+                         'Choices: f1/valid, loss/valid, b-accuracy/valid, video-f1/valid, video-b-accuracy/valid, '
+                         'video-roc_auc/valid')
 
 # General parameters
 parser.add_argument('--debug', action='store_true', help='set this flag when debugging, to not connect to wandb, etc')
@@ -266,6 +267,63 @@ def get_metrics(outputs, targets, samples, prefix='', binary=False):
                'accuracy' + '/' + prefix: accuracy_score(targets, preds),
                'b-accuracy' + '/' + prefix: balanced_accuracy_score(targets, preds),
                'roc_auc' + '/' + prefix: roc_auc_score(targets, preds),
+               'video-f1' + '/' + prefix: video_f1,
+               'video-accuracy' + '/' + prefix: video_acc,
+               'video-b-accuracy' + '/' + prefix: video_b_acc,
+               'video-roc_auc' + '/' + prefix: video_roc_auc
+               }
+    return metrics
+
+
+def get_metrics_probs(outputs, targets, samples, prefix='', binary=False):
+    """
+    Get metrics per batch
+    :param outputs: Model outputs (before max) OR model predictions (after max) - as a tensor OR list
+    :param targets: Targets / true label - as a tensor OR list
+    :param prefix: What to prefix the metric with - set to 'train' or 'valid' or 'test'
+    :param binary: Set to true if this is for binary classification
+    :return: Dictionary containing the metrics and the model predictions (arg maxed outputs)
+    """
+    if torch.is_tensor(outputs):
+        outputs = outputs.cpu()
+        targets = targets.cpu()
+    if np.shape(outputs) != np.shape(targets):
+        preds = np.argmax(outputs, axis=1)
+    else:
+        preds = outputs
+
+    if binary:
+        avg = 'binary'
+    else:
+        avg = 'micro'  # For imbalanced multi-class, micro is better than macro
+
+    res_per_video = {}
+    for t, p, o, s in zip(targets, preds, outputs, samples):
+        vid_id = s.split('_')[0]
+        if vid_id in res_per_video:
+            res_per_video[vid_id][1].append(p)
+            res_per_video[vid_id][2].append(o)
+        else:
+            res_per_video[vid_id] = (t, [p], [o])  # first is the target, second is list of preds, third list of out probs
+    targets_per_video = []
+    preds_per_video = []
+    mean_probs_per_video = []
+    for res in res_per_video.values():
+        mean_probs_per_video.append(np.mean(res[2]))
+        percentate_pred_1 = np.sum(res[1])/len(res[1])
+        pred = 1 if percentate_pred_1 >= 0.5 else 0  # Change to a single pred value per video
+        preds_per_video.append(pred)
+        targets_per_video.append(res[0])
+
+    video_f1 = f1_score(targets_per_video, preds_per_video, average=avg)
+    video_b_acc = balanced_accuracy_score(targets_per_video, preds_per_video)
+    video_acc = accuracy_score(targets_per_video, preds_per_video)
+    video_roc_auc = roc_auc_score(targets_per_video, mean_probs_per_video)
+
+    metrics = {'f1' + '/' + prefix: f1_score(targets, preds, average=avg),
+               'accuracy' + '/' + prefix: accuracy_score(targets, preds),
+               'b-accuracy' + '/' + prefix: balanced_accuracy_score(targets, preds),
+               'roc_auc' + '/' + prefix: roc_auc_score(targets, outputs),
                'video-f1' + '/' + prefix: video_f1,
                'video-accuracy' + '/' + prefix: video_acc,
                'video-b-accuracy' + '/' + prefix: video_b_acc,
@@ -471,9 +529,12 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
         if epoch % args.log_freq == 0:  # log every xth epoch
             target_lst = [t.item() for t in epoch_targets]
             targ_lst_valid = [t.item() for t in epoch_valid_targets]
-            epoch_metrics = get_metrics(epoch_outs, target_lst, epoch_samples, prefix='train', binary=binary)
-            epoch_valid_metrics = get_metrics(epoch_valid_outs, targ_lst_valid, epoch_valid_samples, prefix='valid',
-                                              binary=binary)
+            # epoch_metrics = get_metrics(epoch_outs, target_lst, epoch_samples, prefix='train', binary=binary)
+            # epoch_valid_metrics = get_metrics(epoch_valid_outs, targ_lst_valid, epoch_valid_samples, prefix='valid',
+            #                                  binary=binary)
+            epoch_metrics = get_metrics_probs(epoch_outs, target_lst, epoch_samples, prefix='train', binary=binary)
+            epoch_valid_metrics = get_metrics_probs(epoch_valid_outs, targ_lst_valid, epoch_valid_samples,
+                                                    prefix='valid', binary=binary)
             print('*** epoch:', epoch, '***')
             print('train_loss:', epoch_loss / data_len)
             print('valid loss:', epoch_valid_loss / valid_len)
