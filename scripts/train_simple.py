@@ -275,7 +275,7 @@ def get_metrics(outputs, targets, samples, prefix='', binary=False):
     return metrics
 
 
-def get_metrics_probs(outputs, targets, samples, prefix='', binary=False):
+def get_metrics_probs(outputs, prob_1s, targets, samples, prefix='', binary=False):
     """
     Get metrics per batch
     :param outputs: Model outputs (before max) OR model predictions (after max) - as a tensor OR list
@@ -287,6 +287,7 @@ def get_metrics_probs(outputs, targets, samples, prefix='', binary=False):
     if torch.is_tensor(outputs):
         outputs = outputs.cpu()
         targets = targets.cpu()
+        prob_1s = prob_1s.cpu()
     if np.shape(outputs) != np.shape(targets):
         preds = np.argmax(outputs, axis=1)
     else:
@@ -298,13 +299,14 @@ def get_metrics_probs(outputs, targets, samples, prefix='', binary=False):
         avg = 'micro'  # For imbalanced multi-class, micro is better than macro
 
     res_per_video = {}
-    for t, p, o, s in zip(targets, preds, outputs, samples):
+    for t, pred, prob, s in zip(targets, preds, prob_1s, samples):
         vid_id = s.split('_')[0]
         if vid_id in res_per_video:
-            res_per_video[vid_id][1].append(p)
-            res_per_video[vid_id][2].append(o)
+            res_per_video[vid_id][1].append(pred)
+            res_per_video[vid_id][2].append(prob)
         else:
-            res_per_video[vid_id] = (t, [p], [o])  # first is the target, second is list of preds, third list of out probs
+            # first is the target, second is list of preds, third list of out probs (prob of 1)
+            res_per_video[vid_id] = (t, [pred], [prob])
     targets_per_video = []
     preds_per_video = []
     mean_probs_per_video = []
@@ -323,7 +325,7 @@ def get_metrics_probs(outputs, targets, samples, prefix='', binary=False):
     metrics = {'f1' + '/' + prefix: f1_score(targets, preds, average=avg),
                'accuracy' + '/' + prefix: accuracy_score(targets, preds),
                'b-accuracy' + '/' + prefix: balanced_accuracy_score(targets, preds),
-               'roc_auc' + '/' + prefix: roc_auc_score(targets, outputs),
+               'roc_auc' + '/' + prefix: roc_auc_score(targets, prob_1s),
                'video-f1' + '/' + prefix: video_f1,
                'video-accuracy' + '/' + prefix: video_acc,
                'video-b-accuracy' + '/' + prefix: video_b_acc,
@@ -485,15 +487,18 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
 
     num_val_fails = 0
     print("Start training on", data_len, "training samples, and", valid_len, "validation samples")
+    sm = torch.nn.Softmax(dim=-1)
     for epoch in range(args.max_epochs):
         epoch_loss = epoch_valid_loss = 0
         epoch_targets = []
         epoch_outs = []
+        epoch_prob_1s = []
         epoch_samples = []
         epoch_attention = []
         epoch_valid_targets = []
         epoch_valid_samples = []
         epoch_valid_outs = []
+        epoch_valid_prob_1s = []
         epoch_valid_attention = []
 
         # TRAIN
@@ -505,6 +510,7 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
             if att is not None:
                 epoch_attention.extend(att.cpu().detach().numpy())
             epoch_outs.extend(out.cpu().detach().numpy())
+            epoch_prob_1s.extend(sm(out)[:, 1].cpu().detach().numpy())
             epoch_loss += loss.item() * args.batch_size
             optimizer.zero_grad()
             loss.backward()
@@ -522,6 +528,7 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
                     epoch_valid_attention.append(val_att.cpu().detach().numpy())
                 # epoch_valid_preds.extend(torch.max(val_out, dim=1)[1])
                 epoch_valid_outs.extend(val_out.cpu().detach().numpy())
+                epoch_valid_prob_1s.extend(sm(val_out)[:, 1].cpu().detach().numpy())
                 epoch_valid_loss += val_loss.item() * args.batch_size
 
         scheduler.step(epoch_valid_loss / valid_len)  # Update learning rate scheduler
@@ -532,9 +539,10 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
             # epoch_metrics = get_metrics(epoch_outs, target_lst, epoch_samples, prefix='train', binary=binary)
             # epoch_valid_metrics = get_metrics(epoch_valid_outs, targ_lst_valid, epoch_valid_samples, prefix='valid',
             #                                  binary=binary)
-            epoch_metrics = get_metrics_probs(epoch_outs, target_lst, epoch_samples, prefix='train', binary=binary)
-            epoch_valid_metrics = get_metrics_probs(epoch_valid_outs, targ_lst_valid, epoch_valid_samples,
-                                                    prefix='valid', binary=binary)
+            epoch_metrics = get_metrics_probs(epoch_outs, epoch_prob_1s, target_lst, epoch_samples, prefix='train',
+                                              binary=binary)
+            epoch_valid_metrics = get_metrics_probs(epoch_valid_outs, epoch_valid_prob_1s, targ_lst_valid,
+                                                    epoch_valid_samples, prefix='valid', binary=binary)
             print('*** epoch:', epoch, '***')
             print('train_loss:', epoch_loss / data_len)
             print('valid loss:', epoch_valid_loss / valid_len)
