@@ -60,9 +60,9 @@ def get_resnet3d_18(num_classes=2, model_type='r2plus1d_18', pretrained=True):
 
 
 class Res3DAttention(nn.Module):
-    def __init__(self, num_classes=2, ch=1, w=112, h=112, t=6, att_type='self'):
+    def __init__(self, num_classes=2, ch=1, w=112, h=112, t=6, att_type='self', pretrained=True):
         super(Res3DAttention, self).__init__()
-        model = models.video.__dict__['r3d_18'](pretrained=True)
+        model = models.video.__dict__['r3d_18'](pretrained=pretrained)
         in_channels = 1
         model.stem[0] = torch.nn.Conv3d(in_channels, model.stem[0].out_channels, kernel_size=(1, 7, 7),
                                         stride=(1, 2, 2),

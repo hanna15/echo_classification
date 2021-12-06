@@ -608,7 +608,7 @@ def main():
             if args.self_attention or args.map_attention:
                 att_type = 'self' if args.self_attention else 'map'
                 model = Res3DAttention(num_classes=len(train_dataset.labels), ch=1, w=size, h=size, t=args.clip_len,
-                                       att_type=att_type).to(device)
+                                       att_type=att_type, pretrained=args.pretrained).to(device)
             else:
                 model = get_resnet3d_18(num_classes=len(train_dataset.labels), pretrained=args.pretrained,
                                         model_type=args.model).to(device)
