@@ -3,7 +3,7 @@ import os
 import pandas as pd
 import torch
 import csv
-from sklearn.metrics import roc_auc_score, classification_report, f1_score, roc_curve
+from sklearn.metrics import roc_auc_score, classification_report, f1_score, roc_curve, balanced_accuracy_score
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from matplotlib import pyplot as plt
 
@@ -61,6 +61,7 @@ def get_metrics_for_fold(fold_targets, fold_preds, fold_probs, fold_samples):
 
     # frame_roc_auc = roc_auc_score(fold_targets, fold_preds)
     frame_roc_auc = roc_auc_score(fold_targets, fold_probs)
+    frame_b_acc = balanced_accuracy_score(fold_targets, fold_preds),
     # Get scores per video
     res_per_video = {}  # is format is {'vid_id': target, [predicted frames]}
     i = 0
@@ -92,8 +93,10 @@ def get_metrics_for_fold(fold_targets, fold_preds, fold_probs, fold_samples):
         model_probs.append(np.nanmean(res[2]))
 
     res = {'Frame ROC_AUC': frame_roc_auc,
+           'Frame bACC': frame_b_acc,
            #'Video ROC_AUC': roc_auc_score(video_targets, video_preds),
            'Video ROC_AUC': roc_auc_score(video_targets, model_probs),
+           'Video bACC': balanced_accuracy_score(video_targets, video_preds),
            'Video F1 (macro)': f1_score(video_targets, video_preds, average='macro'),
            'Video F1, pos': f1_score(video_targets, video_preds, average='binary'),
            'Video F1, neg': f1_score(video_targets, video_preds, pos_label=0, average='binary'),
