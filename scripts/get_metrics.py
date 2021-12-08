@@ -24,7 +24,8 @@ parser.add_argument('--train',  action='store_true', help='Set this flag to save
 parser.add_argument('--only_plot',  action='store_true', help='Set this flag to only plot ROC_AUC')
 parser.add_argument('--plot_title',  type=str, default=None, nargs='+', help='title of ROC_AUC plot, if not default')
 
-metrics = ['Frame ROC_AUC', 'Video ROC_AUC', 'Video F1 (macro)', 'Video F1, pos', 'Video F1, neg', 'Video CI']
+metrics = ['Frame ROC_AUC', 'FramebAcc', 'Video ROC_AUC', 'VideobAcc', 'Video F1 (macro)', 'Video F1, pos',
+           'Video F1, neg', 'Video CI']
 
 
 def get_save_classification_report(targets, preds, file_name, metric_res_dir='results', epochs=None):
