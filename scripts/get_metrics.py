@@ -204,8 +204,8 @@ def get_metrics_for_run(res_base_dir, run_name, out_dir, col, subset='val', get_
         get_save_classification_report(vid_targets, vid_preds, f'{subset}_report_video_{run_name}.csv',
                                        metric_res_dir=out_dir, epochs=epochs)
     if get_confusion:
-        get_save_confusion_matrix(targets, preds, f'{subset}_cm_{run_name}.csv', metric_res_dir=out_dir)
-        get_save_confusion_matrix(targets, preds, f'{subset}_cm_video_{run_name}.csv', metric_res_dir=out_dir)
+        get_save_confusion_matrix(targets, vid_preds, f'{subset}_cm_{run_name}.csv', metric_res_dir=out_dir)
+        get_save_confusion_matrix(vid_targets, preds, f'{subset}_cm_video_{run_name}.csv', metric_res_dir=out_dir)
     if first:  # Plot random baseline, only 1x
         p_fpr, p_tpr, _ = roc_curve(targets, [0 for _ in range(len(targets))], pos_label=1)
         plt.plot(p_fpr, p_tpr, linestyle='--', color='blue', label='random')
