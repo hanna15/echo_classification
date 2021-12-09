@@ -65,7 +65,7 @@ def get_save_confusion_matrix(targets, preds, file_name, metric_res_dir='results
     cm_dir = os.path.join(metric_res_dir, 'confusion_matrix')
     os.makedirs(cm_dir, exist_ok=True)
     file_name = os.path.join(cm_dir, file_name)
-    with open(file_name, 'a') as f:
+    with open(file_name, 'w') as f:
         writer = csv.writer(f)
         writer.writerow(['', '', 'True', 'True'])
         writer.writerow(['', '', '1', '0'])
