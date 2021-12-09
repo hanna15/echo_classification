@@ -146,7 +146,7 @@ def get_metrics_for_run(res_base_dir, run_name, out_dir, subset='val', get_clf_r
         curr_targ = res[0]
         curr_preds = res[1]
         curr_out_probs = res[2]
-        ratio_pred_1 = np.sum(curr_preds / len(curr_preds))
+        ratio_pred_1 = np.sum(curr_preds) / len(curr_preds)
         ratio_pred_0 = 1 - ratio_pred_1
         pred = 1 if ratio_pred_1 >= 0.5 else 0  # Change to a single pred value per video
         video_ci.append(ratio_pred_1 if pred == 1 else ratio_pred_0)
