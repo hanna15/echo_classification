@@ -3,7 +3,7 @@ import os
 import pandas as pd
 import torch
 import csv
-from sklearn.metrics import roc_auc_score, classification_report, f1_score, roc_curve, balanced_accuracy_score
+from sklearn.metrics import roc_auc_score, classification_report, confusion_matrix, f1_score, roc_curve, balanced_accuracy_score
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from matplotlib import pyplot as plt
 
@@ -20,6 +20,7 @@ parser.add_argument('--out_names', type=str, default=None, nargs='+',
                          'to be used for results')
 parser.add_argument('--out_dir', type=str, default='metric_results')
 parser.add_argument('--cr',  action='store_true', help='Set this flag to save also classification report per run')
+parser.add_argument('--cm',  action='store_true', help='Set this flag to also save confusion matrix per run')
 parser.add_argument('--train',  action='store_true', help='Set this flag to save also classification report per run')
 parser.add_argument('--only_plot',  action='store_true', help='Set this flag to only plot ROC_AUC')
 parser.add_argument('--plot_title',  type=str, default=None, nargs='+', help='title of ROC_AUC plot, if not default')
@@ -48,6 +49,28 @@ def get_save_classification_report(targets, preds, file_name, metric_res_dir='re
             writer = csv.writer(f)
             writer.writerow([])
             writer.writerow(['epochs'] + epochs)
+
+
+def get_save_confusion_matrix(targets, preds, file_name, metric_res_dir='results'):
+    """
+    Get classification report for the given targets and predictions, and save it.
+    Furthermore, save the epoch that the model stopped training, if epochs is specified.
+    :param targets: Ground truth labels
+    :param preds: Model predicted labels
+    :param file_name: Name of the resulting file
+    :param metric_res_dir: Name of the base result directory
+    :param epochs: List of epochs per fold, if desired to save this info. Else None
+    """
+    tn, fp, fn, tp = confusion_matrix(targets, preds).ravel()
+    cm_dir = os.path.join(metric_res_dir, 'confusion_matrix')
+    os.makedirs(cm_dir, exist_ok=True)
+    file_name = os.path.join(cm_dir, file_name)
+    with open(file_name, 'a') as f:
+        writer = csv.writer(f)
+        writer.writerow(['', '', 'True', 'True'])
+        writer.writerow(['', '', '1', '0'])
+        writer.writerow(['Predicted', '1', tp, fp])
+        writer.writerow(['Predicted', '0', fn, tn])
 
 
 def get_metrics_for_fold(fold_targets, fold_preds, fold_probs, fold_samples):
@@ -129,8 +152,8 @@ def read_results(res_dir, subset='val'):
     return preds, probs, targets, samples
 
 
-def get_metrics_for_run(res_base_dir, run_name, out_dir, col, subset='val', get_clf_report=False, first=False,
-                        out_name=None):
+def get_metrics_for_run(res_base_dir, run_name, out_dir, col, subset='val', get_clf_report=False, get_confusion=False,
+                        first=False, out_name=None):
     """
     Get list of metrics (in a string format) for current model / run, averaged over all fold, and per-video
     :param res_base_dir: Directory where results for this model are stored
@@ -180,7 +203,9 @@ def get_metrics_for_run(res_base_dir, run_name, out_dir, col, subset='val', get_
                                        metric_res_dir=out_dir, epochs=epochs)
         get_save_classification_report(vid_targets, vid_preds, f'{subset}_report_video_{run_name}.csv',
                                        metric_res_dir=out_dir, epochs=epochs)
-
+    if get_confusion:
+        get_save_confusion_matrix(targets, preds, f'{subset}_cm_{run_name}.csv', metric_res_dir=out_dir)
+        get_save_confusion_matrix(targets, preds, f'{subset}_cm_video_{run_name}.csv', metric_res_dir=out_dir)
     if first:  # Plot random baseline, only 1x
         p_fpr, p_tpr, _ = roc_curve(targets, [0 for _ in range(len(targets))], pos_label=1)
         plt.plot(p_fpr, p_tpr, linestyle='--', color='blue', label='random')
@@ -222,12 +247,12 @@ def main():
     for i, run_name in enumerate(all_runs):
         col = colorMap(i/no_runs)
         out_name = None if args.out_names is None else args.out_names[i]
-        res = get_metrics_for_run(res_dir, run_name, out_dir, col, get_clf_report=args.cr, first=(i == 0),
-                                  out_name=out_name)
+        res = get_metrics_for_run(res_dir, run_name, out_dir, col, get_clf_report=args.cr, get_confusion=args.cm,
+                                  first=(i == 0), out_name=out_name)
         val_data[i] = res
         if args.train:
             res_train = get_metrics_for_run(res_dir, run_name, out_dir, col, subset='train', get_clf_report=args.cr,
-                                            out_name=out_name)
+                                            get_confusion=args.cm, out_name=out_name)
             train_data[i] = res_train
     if args.out_names:
         df_names = args.out_names
