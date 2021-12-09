@@ -146,14 +146,16 @@ def get_metrics_for_run(res_base_dir, run_name, out_dir, subset='val', get_clf_r
         curr_targ = res[0]
         curr_preds = res[1]
         curr_out_probs = res[2]
+        avg_prob = np.nanmean(curr_out_probs)
+        pred = 1 if avg_prob >= 0.5 else 0
         ratio_pred_1 = np.sum(curr_preds) / len(curr_preds)
         ratio_pred_0 = 1 - ratio_pred_1
-        pred = 1 if ratio_pred_1 >= 0.5 else 0  # Change to a single pred value per video
+        # pred = 1 if ratio_pred_1 >= 0.5 else 0  # Change to a single pred value per video
         video_ci.append(ratio_pred_1 if pred == 1 else ratio_pred_0)
         video_probs.append(ratio_pred_1)
         video_preds.append(pred)
         video_targets.append(curr_targ)
-        out_probs.append(np.nanmean(curr_out_probs))
+        out_probs.append(avg_prob)
     print(run_name)
     print(video_ci)
     if get_clf_report:  # Classification report on a frame-level
