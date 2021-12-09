@@ -125,7 +125,8 @@ def get_metrics_for_fold(fold_targets, fold_preds, fold_probs, fold_samples):
            'Video F1, pos': f1_score(video_targets, video_preds, average='binary'),
            'Video F1, neg': f1_score(video_targets, video_preds, pos_label=0, average='binary'),
            'Video CI':  np.mean(video_confidence_interval)}
-    return res, video_targets, video_probs, video_preds, model_probs
+    vid_ids = res_per_video.keys()
+    return res, video_targets, video_probs, video_preds, model_probs, list(vid_ids)
 
 
 def read_results(res_dir, subset='val'):
@@ -172,6 +173,7 @@ def get_metrics_for_run(res_base_dir, run_name, out_dir, col, subset='val', get_
     vid_targets = []
     vid_probs = []
     vid_preds = []
+    vid_ids = []
     avg_softm_probs = []
     epochs = []
     res_path = os.path.join(res_base_dir, run_name) if res_base_dir is not None else run_name
@@ -186,18 +188,29 @@ def get_metrics_for_run(res_base_dir, run_name, out_dir, col, subset='val', get_
         if fold_preds is None:
             print(f'failed for model {os.path.basename(fold_dir)}')
             continue
-        results, vid_targ, vid_prob, vid_pred, avg_prob = get_metrics_for_fold(fold_targets, fold_preds, fold_probs,
-                                                                               fold_samples)
+        results, vid_targ, vid_prob, vid_pred, avg_prob, video_ids = get_metrics_for_fold(fold_targets, fold_preds,
+                                                                                        fold_probs, fold_samples)
         for metric, val in results.items():
             metric_dict[metric].append(val)
         vid_probs.extend(vid_prob)
         vid_targets.extend(vid_targ)
         vid_preds.extend(vid_pred)
+        vid_ids.extend(video_ids)
         preds.extend(fold_preds)
         targets.extend(fold_targets)
         avg_softm_probs.extend(avg_prob)
 
     # Save Results
+    if get_clf_report or get_confusion:
+        all_unique_video_res = {}
+        for v_id, v_target, v_pred in zip(vid_ids, vid_targets, vid_preds):
+            if v_id in all_unique_video_res:
+                all_unique_video_res[v_id][0].append(v_pred)  # add current prediction
+            else:
+                all_unique_video_res[v_id] = [[v_pred], v_target]
+        # e.g. [0, 1, 0] will have average: 0.3 => round = 0.  E.g. [1, 1, 0] will have avg: 0.66 => round = 1
+        vid_preds = [round(np.average(all_unique_video_res[id][0])) for id in all_unique_video_res.keys()]
+        vid_targets = np.asarray(all_unique_video_res.values())[:, 1] # Single target for each unique video
     if get_clf_report:  # Classification report on a frame-level
         get_save_classification_report(targets, preds, f'{subset}_report_{run_name}.csv',
                                        metric_res_dir=out_dir, epochs=epochs)
