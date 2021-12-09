@@ -102,7 +102,7 @@ def get_metrics_for_fold(fold_targets, fold_preds, fold_probs, fold_samples):
            'Video F1, pos': f1_score(video_targets, video_preds, average='binary'),
            'Video F1, neg': f1_score(video_targets, video_preds, pos_label=0, average='binary'),
            'Video CI':  np.mean(video_confidence_interval)}
-    return res, video_targets, video_probs, model_probs
+    return res, video_targets, video_probs, video_preds, model_probs
 
 
 def read_results(res_dir, subset='val'):
@@ -148,6 +148,7 @@ def get_metrics_for_run(res_base_dir, run_name, out_dir, col, subset='val', get_
     preds = []
     vid_targets = []
     vid_probs = []
+    vid_preds = []
     avg_softm_probs = []
     epochs = []
     res_path = os.path.join(res_base_dir, run_name) if res_base_dir is not None else run_name
@@ -162,17 +163,22 @@ def get_metrics_for_run(res_base_dir, run_name, out_dir, col, subset='val', get_
         if fold_preds is None:
             print(f'failed for model {os.path.basename(fold_dir)}')
             continue
-        results, vid_targ, vid_prob, avg_prob = get_metrics_for_fold(fold_targets, fold_preds, fold_probs, fold_samples)
+        results, vid_targ, vid_prob, vid_pred, avg_prob = get_metrics_for_fold(fold_targets, fold_preds, fold_probs,
+                                                                               fold_samples)
         for metric, val in results.items():
             metric_dict[metric].append(val)
         vid_probs.extend(vid_prob)
         vid_targets.extend(vid_targ)
+        vid_preds.extend(vid_pred)
         preds.extend(fold_preds)
         targets.extend(fold_targets)
         avg_softm_probs.extend(avg_prob)
+
     # Save Results
     if get_clf_report:  # Classification report on a frame-level
         get_save_classification_report(targets, preds, f'{subset}_report_{run_name}.csv',
+                                       metric_res_dir=out_dir, epochs=epochs)
+        get_save_classification_report(vid_targets, vid_preds, f'{subset}_report_video_{run_name}.csv',
                                        metric_res_dir=out_dir, epochs=epochs)
 
     if first:  # Plot random baseline, only 1x
