@@ -210,15 +210,15 @@ def get_metrics_for_run(res_base_dir, run_name, out_dir, col, subset='val', get_
                 all_unique_video_res[v_id] = [[v_pred], v_target]
         # e.g. [0, 1, 0] will have average: 0.3 => round = 0.  E.g. [1, 1, 0] will have avg: 0.66 => round = 1
         vid_preds = [round(np.average(all_unique_video_res[id][0])) for id in all_unique_video_res.keys()]
-        vid_targets = [v[1] for v in all_unique_video_res.values()]  # Single target for each unique video
+        vid_targets_unique = [v[1] for v in all_unique_video_res.values()]  # Single target for each unique video
     if get_clf_report:  # Classification report on a frame-level
         get_save_classification_report(targets, preds, f'{subset}_report_{run_name}.csv',
                                        metric_res_dir=out_dir, epochs=epochs)
-        get_save_classification_report(vid_targets, vid_preds, f'{subset}_report_video_{run_name}.csv',
+        get_save_classification_report(vid_targets_unique, vid_preds, f'{subset}_report_video_{run_name}.csv',
                                        metric_res_dir=out_dir, epochs=epochs)
     if get_confusion:
         get_save_confusion_matrix(targets, preds, f'{subset}_cm_{run_name}.csv', metric_res_dir=out_dir)
-        get_save_confusion_matrix(vid_targets, vid_preds, f'{subset}_cm_video_{run_name}.csv', metric_res_dir=out_dir)
+        get_save_confusion_matrix(vid_targets_unique, vid_preds, f'{subset}_cm_video_{run_name}.csv', metric_res_dir=out_dir)
     if first:  # Plot random baseline, only 1x
         p_fpr, p_tpr, _ = roc_curve(targets, [0 for _ in range(len(targets))], pos_label=1)
         plt.plot(p_fpr, p_tpr, linestyle='--', color='blue', label='random')
