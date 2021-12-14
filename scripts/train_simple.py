@@ -68,6 +68,7 @@ parser.add_argument('--view', type=str, default='KAPAP', choices=['KAPAP', 'CV']
 # Data parameters
 parser.add_argument('--scaling_factor', default=0.25, help='How much to scale (down) the videos, as a ratio of original '
                                                           'size. Also determines the cache sub-folder')
+parser.add_argument('--img_size', default=224, type=int, help='Size of images (frames) to resize to')
 parser.add_argument('--num_workers', type=int, default=4, help='The number of workers for loading data')
 parser.add_argument('--max_p', type=float, default=90, help='Percentile for max expansion frames')
 parser.add_argument('--min_expansion', action='store_true',
@@ -186,6 +187,8 @@ def get_run_name():
         run_name += str(args.decay_factor)  # only add to description if not default
     if args.decay_patience < 1000:
         run_name += str(args.decay_patience)  # only add to description if not default
+    if args.img_size != 224:
+        run_name += '_size_' + str(args.img_size)
     if args.pretrained:
         run_name += '_pre'
     if args.augment:
@@ -355,15 +358,7 @@ def run_batch(batch, model, criterion=None, binary=False):
         outputs = outputs[0]  # The prev value is the actual output for predictions
     else:
         attention = None
-    # out = []
-    # for _ in range(len(input)):
-    #     rand_decision = random.randint(0, 1)
-    #     if rand_decision == 1:
-    #         pred = [0, 1]
-    #     else:
-    #         pred = [1, 0]
-    #     out.append(pred)
-    # outputs = torch.tensor(out, dtype=torch.float32)
+
     # Get loss, if we are training
     if criterion:
         if binary:
@@ -611,6 +606,7 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
 
 
 def main():
+    # Set up device, logging, run name, etc.
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Will be training on device', device)
     run_name = get_run_name()
@@ -627,6 +623,7 @@ def main():
     else:
         tb_writer = None
 
+    # Get paths
     binary = True if args.label_type.startswith('2class') else False
     label_path = os.path.join('label_files', 'labels_' + args.label_type + '.pkl')
     idx_dir = 'index_files' if args.k is None else os.path.join('index_files', 'k' + str(args.k))
@@ -634,9 +631,7 @@ def main():
     train_index_file_path = os.path.join(idx_dir, 'train_samples_' + args.label_type + idx_file_end + '.npy')
     valid_index_file_path = os.path.join(idx_dir, 'valid_samples_' + args.label_type + idx_file_end + '.npy')
 
-    size = 224
-    if args.temporal: # just for now => try it (!)
-        size = 112
+    size = args.img_size
     if args.augment and not args.load_model:  # All augmentations
         train_transforms = get_transforms(train_index_file_path, dataset_orig_img_scale=args.scaling_factor, resize=size,
                                           augment=args.aug_type, fold=args.fold, valid=False, view=args.view,
