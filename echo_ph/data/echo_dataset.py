@@ -190,6 +190,8 @@ class EchoDataset(Dataset):
         # === Get labels ===
         with open(self.label_path, 'rb') as label_file:
             all_labels = pickle.load(label_file)
+        if sample not in all_labels:  # ATH! When proper index files used, this should not happen
+            return None, None, None
         label = all_labels[sample]
 
         if self.segm_masks:  # Train only on segmentation mask frames

@@ -2,12 +2,10 @@ import numpy as np
 import random
 import torch
 import os
-import math
 from torch import cuda, device
 from torch import nn, optim, no_grad
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from torch.utils.tensorboard import SummaryWriter
-from torchvision import models
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 import wandb
 from echo_ph.data.echo_dataset import EchoDataset
@@ -15,8 +13,8 @@ from echo_ph.models.conv_nets import ConvNet, SimpleConvNet
 from echo_ph.models.resnets import resnet_simpler, get_resnet18
 from echo_ph.models.resnet_3d import get_resnet3d_18, get_resnet3d_50, Res3DAttention
 from echo_ph.data.ph_labels import long_label_type_to_short
+from echo_ph.evaluation.metrics import Metrics
 from utils.transforms2 import get_transforms
-from sklearn.metrics import f1_score, accuracy_score, balanced_accuracy_score, roc_auc_score
 import warnings
 
 """
@@ -81,18 +79,7 @@ parser.add_argument('--augment', action='store_true',
 parser.add_argument('--aug_type', type=int, default=2,
                     help='What augmentation type to use (1 for 25% not, 2 for gray vs. background, '
                          '3 for as in his thesis')
-parser.add_argument('--noise', action='store_true',
-                    help='Apply random noise augmentation')
-parser.add_argument('--intensity', action='store_true',
-                    help='Apply random intensity augmentation')
-parser.add_argument('--rand_resize', action='store_true',
-                    help='Apply random resizing augmentation')
-parser.add_argument('--rotate', action='store_true',
-                    help='Apply random rotating augmentation')
-parser.add_argument('--translate', action='store_true',
-                    help='Apply random translating augmentation')
-parser.add_argument('--hist_eq', action='store_true',
-                    help='set this flag to apply histogram equalisation to training and validation data')
+
 # Class imbalance
 parser.add_argument('--class_balance_per_epoch', action='store_true',
                     help='set this flag to have ca. equal no. samples of each class per epoch / oversampling')
@@ -197,20 +184,6 @@ def get_run_name():
         run_name += '_bal'
     if args.weight_loss:
         run_name += '_w'
-    if args.hist_eq:
-        run_name += '_hist'
-    if args.noise:
-        run_name += '_n'
-    if args.intensity:
-        run_name += '_i'
-    if args.rand_resize:
-        run_name += '_re'
-    if args.rotate:
-        run_name += '_rot'
-    if args.rotate:
-        run_name += '_t'
-    if args.model != 'resnet':
-        run_name += '_drop' + str(args.dropout)
     if args.max_p != 90 and args.num_rand_frames is None:
         run_name += '_p' + str(args.max_p)
     if args.min_expansion:
@@ -224,117 +197,22 @@ def get_run_name():
     return run_name
 
 
-def get_metrics(outputs, targets, samples, prefix='', binary=False):
+def get_metrics_probs(outputs, sm_prob_1s, targets, samples, binary=True, prefix=''):
     """
     Get metrics per batch
-    :param outputs: Model outputs (before max) OR model predictions (after max) - as a tensor OR list
+    :param outputs: Model raw outputs (before max)
+    :param sm_prob_1s: Soft-max probabilities of the positive class
     :param targets: Targets / true label - as a tensor OR list
+    :param samples: Sample names of the batch
+    :param binary: Set to true, in case of binary classification
     :param prefix: What to prefix the metric with - set to 'train' or 'valid' or 'test'
-    :param binary: Set to true if this is for binary classification
     :return: Dictionary containing the metrics and the model predictions (arg maxed outputs)
     """
-    if torch.is_tensor(outputs):
-        outputs = outputs.cpu()
-        targets = targets.cpu()
-    if np.shape(outputs) != np.shape(targets):
-        preds = np.argmax(outputs, axis=1)
-    else:
-        preds = outputs
-
-    if binary:
-        avg = 'binary'
-    else:
-        avg = 'micro'  # For imbalanced multi-class, micro is better than macro
-
-    res_per_video = {}
-    for t, p, s in zip(targets, preds, samples):
-        vid_id = s.split('_')[0]
-        if vid_id in res_per_video:
-            res_per_video[vid_id][1].append(p)
-        else:
-            res_per_video[vid_id] = (t, [p])  # first is the target, second is list of preds
-    targets_per_video = []
-    preds_per_video = []
-    for res in res_per_video.values():
-        percentate_pred_1 = np.sum(res[1])/len(res[1])
-        pred = 1 if percentate_pred_1 >= 0.5 else 0  # Change to a single pred value per video
-        preds_per_video.append(pred)
-        targets_per_video.append(res[0])
-
-    video_f1 = f1_score(targets_per_video, preds_per_video, average=avg)
-    video_b_acc = balanced_accuracy_score(targets_per_video, preds_per_video)
-    video_acc = accuracy_score(targets_per_video, preds_per_video)
-    video_roc_auc = roc_auc_score(targets_per_video, preds_per_video)
-
-    metrics = {'f1' + '/' + prefix: f1_score(targets, preds, average=avg),
-               'accuracy' + '/' + prefix: accuracy_score(targets, preds),
-               'b-accuracy' + '/' + prefix: balanced_accuracy_score(targets, preds),
-               'roc_auc' + '/' + prefix: roc_auc_score(targets, preds),
-               'video-f1' + '/' + prefix: video_f1,
-               'video-accuracy' + '/' + prefix: video_acc,
-               'video-b-accuracy' + '/' + prefix: video_b_acc,
-               'video-roc_auc' + '/' + prefix: video_roc_auc
-               }
-    return metrics
-
-
-def get_metrics_probs(outputs, prob_1s, targets, samples, prefix='', binary=False):
-    """
-    Get metrics per batch
-    :param outputs: Model outputs (before max) OR model predictions (after max) - as a tensor OR list
-    :param targets: Targets / true label - as a tensor OR list
-    :param prefix: What to prefix the metric with - set to 'train' or 'valid' or 'test'
-    :param binary: Set to true if this is for binary classification
-    :return: Dictionary containing the metrics and the model predictions (arg maxed outputs)
-    """
-    if torch.is_tensor(outputs):
-        outputs = outputs.cpu()
-        targets = targets.cpu()
-        prob_1s = prob_1s.cpu()
-    if np.shape(outputs) != np.shape(targets):
-        preds = np.argmax(outputs, axis=1)
-    else:
-        preds = outputs
-
-    if binary:
-        avg = 'binary'
-    else:
-        avg = 'micro'  # For imbalanced multi-class, micro is better than macro
-
-    res_per_video = {}
-    for t, pred, prob, s in zip(targets, preds, prob_1s, samples):
-        vid_id = s.split('_')[0]
-        if vid_id in res_per_video:
-            res_per_video[vid_id][1].append(pred)
-            res_per_video[vid_id][2].append(prob)
-        else:
-            # first is the target, second is list of preds, third list of out probs (prob of 1)
-            res_per_video[vid_id] = (t, [pred], [prob])
-    targets_per_video = []
-    preds_per_video = []
-    mean_probs_per_video = []
-    for res in res_per_video.values():
-        mean_probs_per_video.append(np.mean(res[2]))
-        percentate_pred_1 = np.sum(res[1])/len(res[1])
-        pred = 1 if percentate_pred_1 >= 0.5 else 0  # Change to a single pred value per video
-        preds_per_video.append(pred)
-        targets_per_video.append(res[0])
-
-    video_f1 = f1_score(targets_per_video, preds_per_video, average=avg)
-    video_b_acc = balanced_accuracy_score(targets_per_video, preds_per_video)
-    video_acc = accuracy_score(targets_per_video, preds_per_video)
-    video_roc_auc = roc_auc_score(targets_per_video, mean_probs_per_video)
-
-    metrics = {'f1' + '/' + prefix: f1_score(targets, preds, average=avg),
-               'accuracy' + '/' + prefix: accuracy_score(targets, preds),
-               'b-accuracy' + '/' + prefix: balanced_accuracy_score(targets, preds),
-               'roc_auc' + '/' + prefix: roc_auc_score(targets, prob_1s),
-               'video-f1' + '/' + prefix: video_f1,
-               'video-accuracy' + '/' + prefix: video_acc,
-               'video-b-accuracy' + '/' + prefix: video_b_acc,
-               'video-roc_auc' + '/' + prefix: video_roc_auc
-               }
-    return metrics
+    metrics = Metrics(targets, samples, model_outputs=outputs, sm_probs=sm_prob_1s, binary=binary, tb=True)
+    all_metrics = metrics.get_per_sample_scores(subset=prefix)  # first get sample metrics only
+    subject_metrics = metrics.get_per_subject_scores(subset=prefix)  # then get subject metrics
+    all_metrics.update(subject_metrics)  # finally update sample metrics dict with subject metrics, to get all metrics
+    return all_metrics
 
 
 def run_batch(batch, model, criterion=None, binary=False):
@@ -370,42 +248,6 @@ def run_batch(batch, model, criterion=None, binary=False):
     else:  # when just evaluating, no loss
         loss = None
     return loss, outputs, targets, sample_names, attention
-
-
-def evaluate(model, model_name, train_loader, valid_loader, data_len, valid_len, binary=False):
-    model_path = os.path.join(BASE_MODEL_DIR, model_name)
-    model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
-
-    valid_num_batches = math.ceil(valid_len / args.batch_size)
-    num_batches = math.ceil(data_len / args.batch_size)
-    epoch_metrics = {'f1/train': 0, 'accuracy/train': 0, 'b-accuracy/train': 0}  # , 'roc_auc': 0}
-    epoch_valid_metrics = {'f1/val': 0, 'accuracy/val': 0, 'b-accuracy/val': 0}  # , 'roc_auc': 0
-    epoch_targets = []
-    epoch_preds = []
-    epoch_valid_targets = []
-    epoch_valid_preds = []
-
-    with torch.no_grad():
-        model.eval()
-        for train_batch in train_loader:
-            _, pred, targets, metrics = run_batch(train_batch, model, binary=binary, metric_prefix='train')
-            epoch_targets.extend(targets)
-            epoch_preds.extend(pred)
-            for metric in metrics:
-                epoch_metrics[metric] += metrics[metric]
-        for valid_batch in valid_loader:
-            _, val_pred, val_targets, val_metrics = run_batch(valid_batch, model, binary=binary, metric_prefix='valid')
-            epoch_valid_targets.extend(val_targets)
-            epoch_valid_preds.extend(val_pred)
-            for metric in val_metrics:
-                epoch_valid_metrics[metric] += val_metrics[metric]
-
-    for metric in epoch_metrics:
-        epoch_metrics[metric] /= num_batches
-        print(metric, ":", epoch_metrics[metric])
-    for metric in epoch_valid_metrics:
-        epoch_valid_metrics[metric] /= valid_num_batches
-        print(metric, ":", epoch_valid_metrics[metric])
 
 
 def save_model_and_res(model, run_name, target_lst, pred_lst, val_target_lst, val_pred_lst, sample_names,
@@ -468,7 +310,6 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
           binary=False, use_wandb=False):
 
     # Set training loss, optimizer and training parameters
-    # optimizer = optim.Adam(model.parameters(), lr=args.lr)
     if binary:
         criterion = nn.BCEWithLogitsLoss(weight=weights)  # if weights is None, no weighting is performed
     else:
@@ -531,9 +372,6 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
         if epoch % args.log_freq == 0:  # log every xth epoch
             target_lst = [t.item() for t in epoch_targets]
             targ_lst_valid = [t.item() for t in epoch_valid_targets]
-            # epoch_metrics = get_metrics(epoch_outs, target_lst, epoch_samples, prefix='train', binary=binary)
-            # epoch_valid_metrics = get_metrics(epoch_valid_outs, targ_lst_valid, epoch_valid_samples, prefix='valid',
-            #                                  binary=binary)
             epoch_metrics = get_metrics_probs(epoch_outs, epoch_prob_1s, target_lst, epoch_samples, prefix='train',
                                               binary=binary)
             epoch_valid_metrics = get_metrics_probs(epoch_valid_outs, epoch_valid_prob_1s, targ_lst_valid,

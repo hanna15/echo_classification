@@ -2,10 +2,11 @@ import numpy as np
 import os
 import pandas as pd
 import torch
-import csv
-from sklearn.metrics import roc_auc_score, classification_report, confusion_matrix, f1_score, roc_curve, balanced_accuracy_score
+from sklearn.metrics import roc_curve
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from matplotlib import pyplot as plt
+from echo_ph.evaluation.metrics import Metrics, get_save_classification_report, get_save_confusion_matrix
+from statistics import multimode
 
 parser = ArgumentParser(
     description='Get metrics',
@@ -25,52 +26,8 @@ parser.add_argument('--train',  action='store_true', help='Set this flag to save
 parser.add_argument('--only_plot',  action='store_true', help='Set this flag to only plot ROC_AUC')
 parser.add_argument('--plot_title',  type=str, default=None, nargs='+', help='title of ROC_AUC plot, if not default')
 
-metrics = ['Frame ROC_AUC', 'Frame bACC', 'Video ROC_AUC', 'Video bACC', 'Video F1 (macro)', 'Video F1, pos',
-           'Video F1, neg', 'Video CI']
-
-
-def get_save_classification_report(targets, preds, file_name, metric_res_dir='results', epochs=None):
-    """
-    Get classification report for the given targets and predictions, and save it.
-    Furthermore, save the epoch that the model stopped training, if epochs is specified.
-    :param targets: Ground truth labels
-    :param preds: Model predicted labels
-    :param file_name: Name of the resulting file
-    :param metric_res_dir: Name of the base result directory
-    :param epochs: List of epochs per fold, if desired to save this info. Else None
-    """
-    report = classification_report(targets, preds, output_dict=True)
-    df = pd.DataFrame(report).transpose()
-    df['support'] = df['support'].astype(int)
-    file_name = os.path.join(metric_res_dir, 'classification_reports', file_name)
-    df.to_csv(file_name, float_format='%.2f')
-    if epochs is not None:  # Add also epochs info
-        with open(file_name, 'a') as f:
-            writer = csv.writer(f)
-            writer.writerow([])
-            writer.writerow(['epochs'] + epochs)
-
-
-def get_save_confusion_matrix(targets, preds, file_name, metric_res_dir='results'):
-    """
-    Get classification report for the given targets and predictions, and save it.
-    Furthermore, save the epoch that the model stopped training, if epochs is specified.
-    :param targets: Ground truth labels
-    :param preds: Model predicted labels
-    :param file_name: Name of the resulting file
-    :param metric_res_dir: Name of the base result directory
-    :param epochs: List of epochs per fold, if desired to save this info. Else None
-    """
-    tn, fp, fn, tp = confusion_matrix(targets, preds).ravel()
-    cm_dir = os.path.join(metric_res_dir, 'confusion_matrix')
-    os.makedirs(cm_dir, exist_ok=True)
-    file_name = os.path.join(cm_dir, file_name)
-    with open(file_name, 'w') as f:
-        writer = csv.writer(f)
-        writer.writerow(['', '', 'True', 'True'])
-        writer.writerow(['', '', '1', '0'])
-        writer.writerow(['Predicted', '1', tp, fp])
-        writer.writerow(['Predicted', '0', fn, tn])
+metric_list = ['Frame ROC_AUC', 'Frame bACC', 'Video ROC_AUC', 'Video bACC', 'Video F1 (micro)', 'Video F1, pos',
+               'Video F1, neg', 'Video CI']
 
 
 def get_metrics_for_fold(fold_targets, fold_preds, fold_probs, fold_samples):
@@ -82,51 +39,14 @@ def get_metrics_for_fold(fold_targets, fold_preds, fold_probs, fold_samples):
     :param fold_samples: Sample names
     :return: results dictionary, video_wise_targets, video_wise_probs
     """
-
-    # frame_roc_auc = roc_auc_score(fold_targets, fold_preds)
-    frame_roc_auc = roc_auc_score(fold_targets, fold_probs)
-    frame_b_acc = balanced_accuracy_score(fold_targets, fold_preds),
-    # Get scores per video
-    res_per_video = {}  # is format is {'vid_id': target, [predicted frames]}
-    i = 0
-    for targ, pred, sample in zip(fold_targets, fold_preds, fold_samples):
-        vid_id = sample.split('_')[0]
-        prob = np.nan if fold_probs is None else fold_probs[i]
-        if vid_id in res_per_video:
-            res_per_video[vid_id][1].append(pred)  # append all predictions for the given video
-            res_per_video[vid_id][2].append(prob)
-        else:
-            res_per_video[vid_id] = (targ, [pred], [prob])  # first initialise it
-
-        i += 1
-    video_targets = []
-    video_preds = []
-    video_probs = []
-    model_probs = []
-    video_confidence_interval = []
-    # Get a single prediction per video & get combined soft-maxed probs
-    for res in res_per_video.values():
-        ratio_pred_1 = np.sum(res[1]) / len(res[1])
-        ratio_pred_0 = 1 - ratio_pred_1
-        pred = 1 if ratio_pred_1 >= 0.5 else 0  # Change to a single pred value per video
-        video_confidence_interval.append(ratio_pred_1 if pred == 1 else ratio_pred_0)
-        video_probs.append(ratio_pred_1)
-        video_preds.append(pred)
-        video_targets.append(res[0])
-        # model_probs.extend(res[2])  # save frame model (softmax) prob
-        model_probs.append(np.nanmean(res[2]))
-
-    res = {'Frame ROC_AUC': frame_roc_auc,
-           'Frame bACC': frame_b_acc,
-           #'Video ROC_AUC': roc_auc_score(video_targets, video_preds),
-           'Video ROC_AUC': roc_auc_score(video_targets, model_probs),
-           'Video bACC': balanced_accuracy_score(video_targets, video_preds),
-           'Video F1 (macro)': f1_score(video_targets, video_preds, average='macro'),
-           'Video F1, pos': f1_score(video_targets, video_preds, average='binary'),
-           'Video F1, neg': f1_score(video_targets, video_preds, pos_label=0, average='binary'),
-           'Video CI':  np.mean(video_confidence_interval)}
-    vid_ids = res_per_video.keys()
-    return res, video_targets, video_probs, video_preds, model_probs, list(vid_ids)
+    metrics = Metrics(fold_targets, fold_samples, preds=fold_preds, sm_probs=fold_probs, binary=True, tb=False)
+    all_metrics = metrics.get_per_sample_scores()  # first get sample metrics only
+    subject_metrics = metrics.get_per_subject_scores()  # then get subject metrics
+    all_metrics.update(subject_metrics)  # finally update sample metrics dict with subject metrics, to get all metrics
+    vid_targ, vid_pred, vid_avg_prob, vid_conf = metrics.get_subject_lists()
+    all_metrics.update({'Video CI':  np.mean(vid_conf)})
+    vid_ids = all_metrics.keys()
+    return all_metrics, vid_targ, vid_avg_prob, vid_pred, list(vid_ids)
 
 
 def read_results(res_dir, subset='val'):
@@ -144,7 +64,6 @@ def read_results(res_dir, subset='val'):
         return None, None, None, None
     if isinstance(outs[0], (list, np.ndarray)):
         preds = np.argmax(outs, axis=1)
-        # out_1s = outs[:, 1]  # extract output for class 1
         soft_m = np.asarray(sm(torch.tensor(outs)))  # get soft-maxed prob corresponding to class 1
         probs = soft_m[:, 1]
     else:
@@ -162,16 +81,16 @@ def get_metrics_for_run(res_base_dir, run_name, out_dir, col, subset='val', get_
     :param out_dir: Name of directory to store resulting metrics
     :param col: Colour for this run, for ROC_AUC plot
     :param subset: train or val
-    :param get_clf_report: Whether or not to also get classification report (frame-wise)
+    :param get_clf_report: Whether or not to also get classification report (frame-wise & video-wise)
+    :param get_confusion: Whether or not to also get confusion matrix (frame-wise & video-wise)
     :param first: Set to true, if this is the first run
     :param out_name: Shorter name to use for saving results for this run, if desired.
     :return: list of metric strings, to be written to csv
     """
-    metric_dict = {key: [] for key in metrics}
+    metric_dict = {key: [] for key in metric_list}
     targets = []
     preds = []
     vid_targets = []
-    vid_probs = []
     vid_preds = []
     vid_ids = []
     avg_softm_probs = []
@@ -183,53 +102,57 @@ def get_metrics_for_run(res_base_dir, run_name, out_dir, col, subset='val', get_
     for fold_dir in fold_paths:
         epoch = int(fold_dir.rsplit('_e', 1)[-1])
         epochs.append(epoch)
-        # fold_dir = os.path.join(res_path, fold_dir)
         fold_preds, fold_probs, fold_targets, fold_samples = read_results(fold_dir, subset)
         if fold_preds is None:
             print(f'failed for model {os.path.basename(fold_dir)}')
             continue
-        results, vid_targ, vid_prob, vid_pred, avg_prob, video_ids = get_metrics_for_fold(fold_targets, fold_preds,
-                                                                                        fold_probs, fold_samples)
+        results, vid_targ, avg_prob, vid_pred, video_ids = get_metrics_for_fold(fold_targets, fold_preds, fold_probs,
+                                                                                fold_samples)
         for metric, val in results.items():
             metric_dict[metric].append(val)
-        vid_probs.extend(vid_prob)
+
         vid_targets.extend(vid_targ)
         vid_preds.extend(vid_pred)
         vid_ids.extend(video_ids)
+
         preds.extend(fold_preds)
         targets.extend(fold_targets)
         avg_softm_probs.extend(avg_prob)
 
-    # Save Results
     if get_clf_report or get_confusion:
+        # Can't take average over the folds and report std, rather get all unique video (contained in all folds).
+        # Note that some videos might appear in more than 1 fold, because cross-validation strategy picks random 20%
+        # videos for validation per fold, with replacement.
+        # => Thus need to average per video, for those video appearing in more than one fold.
         all_unique_video_res = {}
         for v_id, v_target, v_pred in zip(vid_ids, vid_targets, vid_preds):
             if v_id in all_unique_video_res:
-                all_unique_video_res[v_id][0].append(v_pred)  # add current prediction
+                all_unique_video_res[v_id][1].append(v_pred)  # add current prediction
             else:
-                all_unique_video_res[v_id] = [[v_pred], v_target]
-        # e.g. [0, 1, 0] will have average: 0.3 => round = 0.  E.g. [1, 1, 0] will have avg: 0.66 => round = 1
-        vid_preds = [round(np.average(all_unique_video_res[id][0])) for id in all_unique_video_res.keys()]
-        vid_targets_unique = [v[1] for v in all_unique_video_res.values()]  # Single target for each unique video
-    if get_clf_report:  # Classification report on a frame-level
-        get_save_classification_report(targets, preds, f'{subset}_report_{run_name}.csv',
-                                       metric_res_dir=out_dir, epochs=epochs)
-        get_save_classification_report(vid_targets_unique, vid_preds, f'{subset}_report_video_{run_name}.csv',
-                                       metric_res_dir=out_dir, epochs=epochs)
-    if get_confusion:
-        get_save_confusion_matrix(targets, preds, f'{subset}_cm_{run_name}.csv', metric_res_dir=out_dir)
-        get_save_confusion_matrix(vid_targets_unique, vid_preds, f'{subset}_cm_video_{run_name}.csv', metric_res_dir=out_dir)
+                all_unique_video_res[v_id] = [v_target, [v_pred]]  # (video target, list of video predictions)
+        # multi-mode returns list of equally most frequent item in a list => so get the most frequent label, as the
+        # video label. In case of a tie, pick the higher label (e.g. 50/50 0 and 1, becomes 1).
+        vid_preds = [max(multimode(all_unique_video_res[vid_id][1])) for vid_id in all_unique_video_res.keys()]
+        vid_targets_unique = [v[0] for v in all_unique_video_res.values()]  # Single target for each unique video
+        if get_clf_report:
+            # Classification report on a frame-level
+            get_save_classification_report(targets, preds, f'{subset}_report_{run_name}.csv',
+                                           metric_res_dir=out_dir, epochs=epochs)
+            # Classification report on a video-level
+            get_save_classification_report(vid_targets_unique, vid_preds, f'{subset}_report_video_{run_name}.csv',
+                                           metric_res_dir=out_dir, epochs=epochs)
+        if get_confusion:
+            get_save_confusion_matrix(targets, preds, f'{subset}_cm_{run_name}.csv', metric_res_dir=out_dir)
+            get_save_confusion_matrix(vid_targets_unique, vid_preds, f'{subset}_cm_video_{run_name}.csv',
+                                      metric_res_dir=out_dir)
+
+    # ROC_AUC Plotting
     if first:  # Plot random baseline, only 1x
         p_fpr, p_tpr, _ = roc_curve(targets, [0 for _ in range(len(targets))], pos_label=1)
         plt.plot(p_fpr, p_tpr, linestyle='--', color='blue', label='random')
-
     # Get ROC_AUC plot on a video-level, with thresholds referring to probability of frames
     run_label = out_name if out_name is not None else run_name[-25:]
-    preds_to_plot = vid_probs if np.isnan(avg_softm_probs[0]) else avg_softm_probs
-    targets_to_plot = vid_targets  # if np.isnan(avg_softm_probs[0]) else targets
-    # fpr1, tpr1, thresh1 = roc_curve(vid_targets, preds_to_plot, pos_label=1)
-    fpr1, tpr1, thresh1 = roc_curve(targets_to_plot, preds_to_plot, pos_label=1, drop_intermediate=False)
-    # plt.plot(fpr1, tpr1, color=col, label=run_label, marker='.')
+    fpr1, tpr1, thresh1 = roc_curve(vid_targets, avg_softm_probs, pos_label=1, drop_intermediate=False)
     plt.plot(fpr1, tpr1, color=col, label=run_label)
 
     ret = []
@@ -272,9 +195,9 @@ def main():
     else:
         df_names = [os.path.basename(run) for run in all_runs]
     if not args.only_plot:
-        df = pd.DataFrame(val_data, index=df_names, columns=metrics)
+        df = pd.DataFrame(val_data, index=df_names, columns=metric_list)
         if args.train:
-            df_train = pd.DataFrame(train_data, index=df_names, columns=metrics)
+            df_train = pd.DataFrame(train_data, index=df_names, columns=metric_list)
             df = pd.concat([df, df_train], keys=['val', 'train'], axis=1)
         df.to_csv(os.path.join(out_dir, 'summary.csv'), float_format='%.2f')
 
