@@ -20,21 +20,20 @@ def get_metric_dict(targets, preds, probs=None, subset='', prefix='', tb=True):
     :param tb: Set to true, if calculating metrics for tensorboard during training (has different metric keys)
     :return: Metrics directory with f1, accuracy, balanced accuracy (and roc-auc score, if probs is not None)
     """
-    f1 = f1_score(targets, preds, average='micro')
-    acc = accuracy_score(targets, preds)
     b_acc = balanced_accuracy_score(targets, preds)
-    if tb:  # Metric keys for tensor-board
-        metrics = {prefix + 'f1' + '/' + subset: f1,
+    if tb:  # Metric keys for tensor-board (i.e. during training)
+        acc = accuracy_score(targets, preds)
+        metrics = {prefix + 'f1' + '/' + subset: f1_score(targets, preds, average='micro'),
                    prefix + 'accuracy' + '/' + subset: acc,
                    prefix + 'b-accuracy' + '/' + subset: b_acc,
                    }
     else:  # Metric keys for eval csv files
-        if subset == 'Video':
-            metrics = {prefix + 'F1 (micro)': f1,
+        if prefix.startswith('Video'):
+            metrics = {prefix + 'F1 (micro)': f1_score(targets, preds, average='micro'),
                        prefix + 'F1, pos': f1_score(targets, preds, average='binary'),
                        prefix + 'F1, neg': f1_score(targets, preds, pos_label=0, average='binary'),
                        prefix + 'bACC': b_acc}
-        else: # For the Frame-wise, only report balanced accuracy.
+        else:  # For the Frame-wise, only report balanced accuracy.
             metrics = {prefix + 'bACC': b_acc}
     if probs is not None:  # Also get ROC_AUC score on probabilities, for binary classification
         roc_auc = roc_auc_score(targets, probs)
