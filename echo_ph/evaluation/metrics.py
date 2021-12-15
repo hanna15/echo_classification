@@ -124,6 +124,7 @@ class Metrics():
         self.video_preds = None
         self.mean_probs_per_video = None
         self.video_confidence = None
+        self.video_ids = None
 
     def get_softmax_probs(self):
         """
@@ -180,7 +181,7 @@ class Metrics():
         """
         if self.video_targets is None:
             self._set_subject_res_lists()
-        return self.video_targets, self.video_preds, self.mean_probs_per_video, self.video_confidence
+        return self.video_targets, self.video_preds, self.mean_probs_per_video, self.video_confidence, self.video_ids
 
     def _get_video_dict(self):
         """
@@ -233,5 +234,6 @@ class Metrics():
         self.video_preds = preds_per_video
         self.mean_probs_per_video = mean_probs_per_video
         self.video_confidence = video_confidance
+        self.video_ids = list(res_per_video.keys())
 
 

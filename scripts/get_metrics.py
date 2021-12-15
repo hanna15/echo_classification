@@ -43,10 +43,9 @@ def get_metrics_for_fold(fold_targets, fold_preds, fold_probs, fold_samples):
     all_metrics = metrics.get_per_sample_scores()  # first get sample metrics only
     subject_metrics = metrics.get_per_subject_scores()  # then get subject metrics
     all_metrics.update(subject_metrics)  # finally update sample metrics dict with subject metrics, to get all metrics
-    vid_targ, vid_pred, vid_avg_prob, vid_conf = metrics.get_subject_lists()
+    vid_targ, vid_pred, vid_avg_prob, vid_conf, vid_ids = metrics.get_subject_lists()
     all_metrics.update({'Video CI':  np.mean(vid_conf)})
-    vid_ids = all_metrics.keys()
-    return all_metrics, vid_targ, vid_avg_prob, vid_pred, list(vid_ids)
+    return all_metrics, vid_targ, vid_avg_prob, vid_pred, vid_ids
 
 
 def read_results(res_dir, subset='val'):
