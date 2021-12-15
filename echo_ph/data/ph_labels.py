@@ -3,7 +3,7 @@
 # Mapping the original four labels (including in-between labels) to 3 classes.
 # Keys represent original labels, values new labels.
 # .5 keys represent labels in-between two original labels.
-label_map_3class = ({0: 0, 0.5: 0, 1: 1, 1.5: 1, 2: 2, 2.5: 2, 3: 2},
+label_map_3class = ({0: 0, 0.5: None, 1: 1, 1.5: 1, 2: 2, 2.5: 2, 3: 2},
                     '3class')  # later parameter is descriptive name
 
 # Mapping the original four labels (including in-between labels) to 2 classes.

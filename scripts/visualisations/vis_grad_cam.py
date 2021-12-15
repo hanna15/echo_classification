@@ -1,5 +1,4 @@
 import torch
-from torch import nn
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from utils.transforms2 import get_transforms
 from echo_ph.data import EchoDataset
@@ -12,6 +11,11 @@ import numpy as np
 from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 import os
+
+"""
+A script to create grad-cam visualisations on spatial models, either saving as frames or videos.
+Can let it run on all frames in an entire dataset, or specified videos.
+"""
 
 parser = ArgumentParser(
     description='Arguments for visualising grad cam',
@@ -115,22 +119,22 @@ def get_save_grad_cam_images(data_loader, model, cam, device, subset='valid'):
             plt.show()
     if args.save_frames or args.save_video:
         for video_id in video_frames:
+            frame_titles = video_frames[video_id][1]  # get titles for frames in video, to extract no. corrs & label
+            frame_corrs = np.asarray([frame_title.split('-')[1] for frame_title in frame_titles])
+            ratio_corr = (frame_corrs == 'CORR').sum() / len(frame_titles)
+            print('ratio corr', ratio_corr)
             if args.save_frames:
                 out_dir = os.path.join(output_dir, str(video_id))
+                print('saving frames to out_dir', out_dir)
                 os.makedirs(out_dir, exist_ok=True)
                 for grad_cam_frame, title in zip(video_frames[video_id][0], video_frames[video_id][1]):
                     cv2.imwrite(os.path.join(out_dir, title), grad_cam_frame)
             if args.save_video:
-                frame_titles = video_frames[video_id][1]  # get titles for frames in video, to extract no. corrs & label
-                frame_corrs = np.asarray([frame_title.split('-')[1] for frame_title in frame_titles])
-                ratio_corr = (frame_corrs == 'CORR').sum() / len(frame_titles)
-                print('ratio corr', ratio_corr)
-                if ratio_corr > 0.91 or ratio_corr < 0.3:
-                    true_label = frame_titles[0].split('-')[-1][:-4]
-                    video_title = f'{video_id}-{ratio_corr:.2f}-{true_label}.jpg'
-                    out_dir = output_dir + '_video'
-                    vs = VideoSaver(video_title, video_frames[video_id][0], out_dir=out_dir, fps=10)
-                    vs.save_video()
+                true_label = frame_titles[0].split('-')[-1][:-4]
+                video_title = f'{video_id}-{ratio_corr:.2f}-{true_label}.jpg'
+                out_dir = output_dir + '_video'
+                vs = VideoSaver(video_title, video_frames[video_id][0], out_dir=out_dir, fps=10)
+                vs.save_video()
 
 
 def main():
