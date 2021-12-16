@@ -118,7 +118,8 @@ def get_metrics_for_run(res_base_dir, run_name, out_dir, col, subset='val', get_
 
         preds.extend(fold_preds)
         targets.extend(fold_targets)
-        avg_softm_probs.extend(avg_prob)
+        if avg_prob is not None:
+            avg_softm_probs.extend(avg_prob)
 
     if get_clf_report or get_confusion:
         # Can't take average over the folds and report std, rather get all unique video (contained in all folds).
@@ -148,13 +149,14 @@ def get_metrics_for_run(res_base_dir, run_name, out_dir, col, subset='val', get_
                                       metric_res_dir=out_dir)
 
     # ROC_AUC Plotting
-    if first:  # Plot random baseline, only 1x
-        p_fpr, p_tpr, _ = roc_curve(targets, [0 for _ in range(len(targets))], pos_label=1)
-        plt.plot(p_fpr, p_tpr, linestyle='--', color='blue', label='random')
-    # Get ROC_AUC plot on a video-level, with thresholds referring to probability of frames
-    run_label = out_name if out_name is not None else run_name[-25:]
-    fpr1, tpr1, thresh1 = roc_curve(vid_targets, avg_softm_probs, pos_label=1, drop_intermediate=False)
-    plt.plot(fpr1, tpr1, color=col, label=run_label)
+    if not args.multi_class:
+        if first:  # Plot random baseline, only 1x
+            p_fpr, p_tpr, _ = roc_curve(targets, [0 for _ in range(len(targets))], pos_label=1)
+            plt.plot(p_fpr, p_tpr, linestyle='--', color='blue', label='random')
+        # Get ROC_AUC plot on a video-level, with thresholds referring to probability of frames
+        run_label = out_name if out_name is not None else run_name[-25:]
+        fpr1, tpr1, thresh1 = roc_curve(vid_targets, avg_softm_probs, pos_label=1, drop_intermediate=False)
+        plt.plot(fpr1, tpr1, color=col, label=run_label)
 
     ret = []
     for metric_values in metric_dict.values():
