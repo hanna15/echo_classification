@@ -25,6 +25,7 @@ parser.add_argument('--cm',  action='store_true', help='Set this flag to also sa
 parser.add_argument('--train',  action='store_true', help='Set this flag to save also classification report per run')
 parser.add_argument('--only_plot',  action='store_true', help='Set this flag to only plot ROC_AUC')
 parser.add_argument('--plot_title',  type=str, default=None, nargs='+', help='title of ROC_AUC plot, if not default')
+parser.add_argument('--multi_class', action='store_true', help='Set this flag if not binary classification')
 
 metric_list = ['Frame ROC_AUC', 'Frame bACC', 'Video ROC_AUC', 'Video bACC', 'Video F1 (micro)', 'Video F1, pos',
                'Video F1, neg', 'Video CI']
@@ -39,7 +40,8 @@ def get_metrics_for_fold(fold_targets, fold_preds, fold_probs, fold_samples):
     :param fold_samples: Sample names
     :return: results dictionary, video_wise_targets, video_wise_probs
     """
-    metrics = Metrics(fold_targets, fold_samples, preds=fold_preds, sm_probs=fold_probs, binary=True, tb=False)
+    binary = True if not args.multi_class else False
+    metrics = Metrics(fold_targets, fold_samples, preds=fold_preds, sm_probs=fold_probs, binary=binary, tb=False)
     all_metrics = metrics.get_per_sample_scores()  # first get sample metrics only
     subject_metrics = metrics.get_per_subject_scores()  # then get subject metrics
     all_metrics.update(subject_metrics)  # finally update sample metrics dict with subject metrics, to get all metrics
