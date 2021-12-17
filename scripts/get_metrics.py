@@ -213,7 +213,7 @@ def main():
 if __name__ == "__main__":
     args = parser.parse_args()
     if args.multi_class:
-        metric_list = ['Frame ROC_AUC', 'Frame bACC', 'Video ROC_AUC', 'Video bACC', 'Video CI']
+        metric_list = ['Frame ROC_AUC', 'Frame bACC', 'Video ROC_AUC', 'Video bACC', 'Video F1 (micro)', 'Video CI']
     else:
         metric_list = ['Frame ROC_AUC', 'Frame bACC', 'Video ROC_AUC', 'Video bACC', 'Video F1 (micro)',
                        'Video F1, pos', 'Video F1, neg', 'Video CI']
