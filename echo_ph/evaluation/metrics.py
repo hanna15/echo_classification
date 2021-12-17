@@ -9,12 +9,13 @@ from statistics import multimode
 
 
 # ==== Helper functions related to Metrics
-def get_metric_dict(targets, preds, probs=None, subset='', prefix='', tb=True):
+def get_metric_dict(targets, preds, probs=None, binary=True, subset='', prefix='', tb=True):
     """
     Get dictionary of metrics (f1, accuracy, balanced accuracy, roc_auc) and associated values
     :param targets: Targets / labels
     :param preds: Model predictions
     :param probs: Model soft-maxed probabilities for class PH (if binary classification), else None
+    :param binary: Set to true if binary classification.
     :param subset: 'valid' or 'train', if it should be specified in metric directory
     :param prefix: If any prefix, in front of all metric-keys in directory (e.g. video-)
     :param tb: Set to true, if calculating metrics for tensorboard during training (has different metric keys)
@@ -30,9 +31,12 @@ def get_metric_dict(targets, preds, probs=None, subset='', prefix='', tb=True):
     else:  # Metric keys for eval csv files
         if prefix.startswith('Video'):
             metrics = {prefix + 'F1 (micro)': f1_score(targets, preds, average='micro'),
-                       prefix + 'F1, pos': f1_score(targets, preds, average='binary'),
-                       prefix + 'F1, neg': f1_score(targets, preds, pos_label=0, average='binary'),
                        prefix + 'bACC': b_acc}
+            if binary:
+                metrics.update(
+                    {prefix + 'F1, pos': f1_score(targets, preds, average='binary'),
+                     prefix + 'F1, neg': f1_score(targets, preds, pos_label=0, average='binary')}
+                )
         else:  # For the Frame-wise, only report balanced accuracy.
             metrics = {prefix + 'bACC': b_acc}
     if probs is not None:  # Also get ROC_AUC score on probabilities, for binary classification
@@ -157,7 +161,8 @@ class Metrics():
         if self.binary and self.sm_probs is None:  # Also get ROC_AUC score on probabilities, for binary classification
             self.get_softmax_probs()
         prefix = '' if self.tb else 'Frame '
-        return get_metric_dict(self.targets, self.preds, probs=self.sm_probs, prefix=prefix, subset=subset, tb=self.tb)
+        return get_metric_dict(self.targets, self.preds, probs=self.sm_probs, binary=self.binary,
+                               prefix=prefix, subset=subset, tb=self.tb)
 
     def get_per_subject_scores(self, subset=''):
         """
@@ -170,7 +175,7 @@ class Metrics():
             self._set_subject_res_lists()
         prefix = 'video-' if self.tb else 'Video '
         return get_metric_dict(self.video_targets, self.video_preds, probs=self.mean_probs_per_video,
-                               subset=subset, prefix=prefix, tb=self.tb)
+                               binary=self.binary, subset=subset, prefix=prefix, tb=self.tb)
 
     def get_subject_lists(self):
         """

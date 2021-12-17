@@ -27,9 +27,6 @@ parser.add_argument('--only_plot',  action='store_true', help='Set this flag to 
 parser.add_argument('--plot_title',  type=str, default=None, nargs='+', help='title of ROC_AUC plot, if not default')
 parser.add_argument('--multi_class', action='store_true', help='Set this flag if not binary classification')
 
-metric_list = ['Frame ROC_AUC', 'Frame bACC', 'Video ROC_AUC', 'Video bACC', 'Video F1 (micro)', 'Video F1, pos',
-               'Video F1, neg', 'Video CI']
-
 
 def get_metrics_for_fold(fold_targets, fold_preds, fold_probs, fold_samples):
     """
@@ -215,6 +212,11 @@ def main():
 
 if __name__ == "__main__":
     args = parser.parse_args()
+    if args.multi_class:
+        metric_list = ['Frame ROC_AUC', 'Frame bACC', 'Video ROC_AUC', 'Video bACC', 'Video CI']
+    else:
+        metric_list = ['Frame ROC_AUC', 'Frame bACC', 'Video ROC_AUC', 'Video bACC', 'Video F1 (micro)',
+                       'Video F1, pos', 'Video F1, neg', 'Video CI']
     main()
 
 
