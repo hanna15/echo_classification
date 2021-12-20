@@ -87,7 +87,6 @@ def get_metrics(all_runs, out_dir, subset='val', get_clf_report=False, get_confu
             fold_i_run = os.path.join(all_runs[run_no], fold_i_run_name)
             model_fold_preds, model_fold_probs, model_fold_targets, model_fold_samples = read_results(fold_i_run, subset)
             fold_probs.append(model_fold_probs)
-        print('la')
         fold_probs = np.average(np.asarray(fold_probs), axis=0, weights=args.weights)
         fold_targets = model_fold_targets   # just the last one
         fold_samples = model_fold_samples  # just the last one
