@@ -18,6 +18,7 @@ parser.add_argument('--weights', type=float, default=None, nargs='+',
                     help='Set weights for weighted average - same order as res_dirs.')
 parser.add_argument('--out_dir', type=str, default='metric_results')
 parser.add_argument('--out_name', type=str, default='metric_results')
+parser.add_argument('--no_folds', type=int, default=10)
 parser.add_argument('--cr',  action='store_true', help='Set this flag to save also classification report per run')
 parser.add_argument('--cm',  action='store_true', help='Set this flag to also save confusion matrix per run')
 parser.add_argument('--train',  action='store_true', help='Set this flag to save also classification report per run')
@@ -78,9 +79,8 @@ def get_metrics(all_runs, out_dir, subset='val', get_clf_report=False, get_confu
     vid_ids = []
     avg_softm_probs = []
     # start with first fold, ignore .DS_store and other non-dir files
-    no_folds = 1
     all_runs_all_folds = np.asarray([sorted(os.listdir(run)) for run in all_runs])
-    for i in range(no_folds):
+    for i in range(args.no_folds):
         fold_i_runs = all_runs_all_folds[:, i]
         fold_probs = []
         for run_no, fold_i_run_name in enumerate(fold_i_runs):
@@ -160,9 +160,9 @@ def main():
                                  get_confusion=args.cm)
 
     if not args.only_plot:
-        df = pd.DataFrame(val_data, index=args.out_name, columns=metric_list)
+        df = pd.DataFrame([val_data], index=[args.out_name], columns=metric_list)
         if args.train:
-            df_train = pd.DataFrame(train_data, index=args.out_name, columns=metric_list)
+            df_train = pd.DataFrame([train_data], index=[args.out_name], columns=metric_list)
             df = pd.concat([df, df_train], keys=['val', 'train'], axis=1)
         df.to_csv(os.path.join(out_dir, 'summary.csv'), float_format='%.2f')
 
