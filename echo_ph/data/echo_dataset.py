@@ -248,8 +248,8 @@ class EchoDataset(Dataset):
         sample_name = self.sample_names[idx]
         frame_per_view = self.frames[idx]
         trans_frames_per_view = []
-        for view, frames in zip(self.views, frame_per_view):
-            frames = frames.astype(np.uint8)
+        for view in self.views:
+            frames = frame_per_view[view].astype(np.uint8)
             if self.temporal:
                 frames = list(frames)
             s = (frames, sample_name.split('_')[0] + view)
