@@ -121,7 +121,7 @@ def get_save_grad_cam_images(data_loader, model, device, subset='valid'):
     output_dir = os.path.join('grad_cam_vis', 'temp', subset)
     os.makedirs(output_dir, exist_ok=True)
     for batch in data_loader:
-        inp = batch['frame'].to(device).transpose(2, 1)  # Reshape to: (batch_size, channels, seq-len, W, H)
+        inp = batch['frame'][args.view].to(device).transpose(2, 1)  # Reshape to: (batch_size, channels, seq-len, W, H)
         sample_name = batch['sample_name'][0]
         video_id = int(sample_name.split('_')[0])
         label = batch['label'][0].item()
