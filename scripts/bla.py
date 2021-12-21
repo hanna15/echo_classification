@@ -99,7 +99,7 @@ def main():
         if args.train_set:
             train_data_loader = get_data_loader(fold, args.views, train=True, temp=args.temp)
         view_no = 0
-        for model_dir, model_type, view in zip(args.model_dir_paths, args.model_types, args.views):
+        for model_dir, view in zip(args.model_dir_paths, args.views):
             if args.temp:
                 model = get_resnet3d_18(num_classes=num_classes, model_type='r3d_18').to(device)
             else:  # spatial
