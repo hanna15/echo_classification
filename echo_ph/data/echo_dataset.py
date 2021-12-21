@@ -79,21 +79,18 @@ class EchoDataset(Dataset):
         :param scaling_factor: What scaling factor cached videos have. If using raw videos, scaling factor is not used.
         :param procs: How many processes to use for processing this dataset.
         :param visualise_frames: If visualise frames during training (after transformation)
-        :param views: What model view to use. If get data for multi-modal models (i.e. multi-view models),
+        :param view: What model view to use. If get data for multi-modal models (i.e. multi-view models),
                       provide a list of all views. This will ensure each model view has same frames numbers.
         :param min_expansion: If True, then pick minimum expansion frames instead of maximum expansion frames
         :param num_rand_frames: If None, get min/max expansion frames. Else, set to numner of random frames to pick per video
         """
 
         self.dynamic = dynamic
-        self.views = view
-        if isinstance(self.views, list):
-            self.frames = [[] for _ in range(len(self.views))]
-            if num_rand_frames is None and all_frames is None:
-                print("Multiple views are only supported in conjunction with random frames or all frames,"
-                      "not min/max frames - as those differ between views")
-        else:
-            self.frames = [[]]
+        if isinstance(view, list) and num_rand_frames is None and all_frames is None:
+            print("Multiple views are only supported in conjunction with random frames or all frames,"
+                  "not min/max frames - as those differ between views")
+        self.views = view if isinstance(view, list) else [view]
+        self.frames = dict.fromkeys(self.views, [])
         self.targets = []
         self.sample_names = []
         self.transform = transform
@@ -127,9 +124,9 @@ class EchoDataset(Dataset):
             for frames_per_view, label, sample_names in pool.map(self.load_sample, samples):
                 if frames_per_view is not None and label is not None and sample_names is not None:
                     view_no = 0
-                    for frames in frames_per_view:
+                    for frames, view in zip(frames_per_view, self.views):
                         for frame, sample_name in zip(frames, sample_names):  # Each frame becomes an individual sample (with the same label)
-                            self.frames[view_no].append(frame)
+                            self.frames[view].append(frame)
                             self.targets.append(label)
                             self.sample_names.append(sample_name)
                         view_no += 1
@@ -187,7 +184,7 @@ class EchoDataset(Dataset):
         :param sample: Sample from the file list paths.
         :return: (line regions, parsed program, sample name)
         """
-        views = self.views if isinstance(self.views, list) else [self.views]
+        views = self.views
         videos = []
         for view in views:
             if self.dynamic:
@@ -251,21 +248,21 @@ class EchoDataset(Dataset):
         sample_name = self.sample_names[idx]
         frame_per_view = self.frames[idx]
         trans_frames_per_view = []
-        for view, frame in zip(self.views, frame_per_view):
-            frame = frame.astype(np.uint8)
+        for view, frames in zip(self.views, frame_per_view):
+            frames = frames.astype(np.uint8)
             if self.temporal:
-                frame = list(frame)
-            s = (frame, sample_name.split('_')[0] + view)
-            frame = self.transform(s)
-            trans_frames_per_view.append(frame)
+                frames = list(frames)
+            s = (frames, sample_name.split('_')[0] + view)
+            frames = self.transform(s)
+            trans_frames_per_view.append(frames)
             if self.visualise_frames:
                 if self.temporal:
-                    for i, f in enumerate(frame):
+                    for i, f in enumerate(frames):
                         plt.imshow(f.squeeze(0), cmap='Greys_r')
                         plt.title(str(label) + ' - ' + str(sample_name) + '-' + str(i))
                         plt.show()
                 else:
-                    plt.imshow(frame.squeeze(0), cmap='Greys_r')
+                    plt.imshow(frames.squeeze(0), cmap='Greys_r')
                     plt.title(str(label) + ' - ' + str(sample_name))
                     plt.show()
         sample = {'label': label, 'frame': trans_frames_per_view, 'sample_name': sample_name}
