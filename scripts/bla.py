@@ -29,7 +29,7 @@ parser.add_argument('--model_dir_paths', nargs='+',
 parser.add_argument('--model_types', default=['temporal', 'temporal'], nargs='+',
                     help='set model types (spatial / temporal) for each of the provided model paths (same order)')
 parser.add_argument('--views',  nargs='+', default=['KAPAP', 'CV'])
-
+parser.add_argument('--size', default=224, type=int, help='Size of images (frames) to resize to')
 # Arguments that must be the same for all models
 parser.add_argument('--label_type', default='2class_drop_ambiguous',
                     choices=['2class', '2class_drop_ambiguous', '3class'])
