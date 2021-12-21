@@ -46,6 +46,7 @@ parser.add_argument('--num_rand_frames', type=int, default=None,
 parser.add_argument('--train_set', action='store_true', help='Also evaluate on the training set')
 parser.add_argument('--segm_only', action='store_true', help='Only evaluate on the segmentation masks')
 parser.add_argument('--video_ids', default=None, nargs='+', type=int, help='Get results for specific video ids')
+parser.add_argument('--crop', action='store_true', help='set this flag to crop to corners')
 
 
 def get_data_loader(fold, view='KAPAP', train=False):
