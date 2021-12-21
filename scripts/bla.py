@@ -96,6 +96,7 @@ def main():
             else:  # spatial
                 model = get_resnet18(num_classes=num_classes).to(device)
             model_path = sorted(os.listdir(model_dir))[fold]  # fetch the model corresponding to corresponding fold
+            model_path = os.path.join(model_dir, model_path)
             val_data_loader = get_data_loader(fold, view)
             if args.train_set:
                 train_data_loader = get_data_loader(fold, view, train=True)
