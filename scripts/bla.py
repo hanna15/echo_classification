@@ -85,7 +85,7 @@ def foo(data_loader, model, device):
 
 def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    for fold in args.k:
+    for fold in range(args.k):
         num_classes = 2 if args.label_type.startswith('2') else 3
         total_outs = []
         total_targets = []
