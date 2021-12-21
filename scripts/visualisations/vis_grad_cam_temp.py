@@ -6,6 +6,7 @@ from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 from medcam import medcam
 from utils.transforms2 import get_transforms
+from utils.helpers import get_index_file_path
 from echo_ph.data import EchoDataset
 from echo_ph.models.resnet_3d import get_resnet3d_18, get_resnet3d_50
 from echo_ph.visual.video_saver import VideoSaver
@@ -63,13 +64,10 @@ parser.add_argument('--period', type=int, default=1, help='Sample period, sample
 
 
 def get_data_loader(train=False):
-    if args.video_ids:
-        index_file_path = None
+    if args.video_ids is None:
+        index_file_path = get_index_file_path(args.k, args.fold, args.label_type, train=train)
     else:
-        idx_dir = 'index_files' if args.k is None else os.path.join('index_files', 'k' + str(args.k))
-        idx_file_base_name = 'train_samples_' if train else 'valid_samples_'
-        idx_file_end = '' if args.fold is None else '_' + str(args.fold)
-        index_file_path = os.path.join(idx_dir, idx_file_base_name + args.label_type + idx_file_end + '.npy')
+        index_file_path = None
     label_path = os.path.join('label_files', 'labels_' + args.label_type + '.pkl')
     aug_type = 4 if train else 0
     transforms = get_transforms(index_file_path, dataset_orig_img_scale=args.scale, resize=224,

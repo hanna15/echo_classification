@@ -15,6 +15,7 @@ from echo_ph.models.resnet_3d import get_resnet3d_18, get_resnet3d_50, Res3DAtte
 from echo_ph.data.ph_labels import long_label_type_to_short
 from echo_ph.evaluation.metrics import Metrics
 from utils.transforms2 import get_transforms
+from utils.helpers import get_index_file_path
 import warnings
 
 """
@@ -464,10 +465,8 @@ def main():
     # Get paths
     binary = True if args.label_type.startswith('2class') else False
     label_path = os.path.join('label_files', 'labels_' + args.label_type + '.pkl')
-    idx_dir = 'index_files' if args.k is None else os.path.join('index_files', 'k' + str(args.k))
-    idx_file_end = '' if args.fold is None else '_' + str(args.fold)
-    train_index_file_path = os.path.join(idx_dir, 'train_samples_' + args.label_type + idx_file_end + '.npy')
-    valid_index_file_path = os.path.join(idx_dir, 'valid_samples_' + args.label_type + idx_file_end + '.npy')
+    train_index_file_path = get_index_file_path(args.k, args.fold, args.label_type, train=True)
+    valid_index_file_path = get_index_file_path(args.k, args.fold, args.label_type, train=False)
 
     size = args.img_size
     if args.augment and not args.load_model:  # All augmentations
@@ -545,7 +544,7 @@ def main():
         eval_loader_train = DataLoader(train_dataset, args.batch_size, shuffle=False, num_workers=num_workers)
         eval_loader_valid = DataLoader(valid_dataset, args.batch_size, shuffle=False, num_workers=num_workers)
         model_name = run_name if args.model_name is None else args.model_name
-        evaluate(model, model_name, eval_loader_train, eval_loader_valid)
+        # evaluate(model, model_name, eval_loader_train, eval_loader_valid) # TODO
     else:  # Create training datasets (with shuffling or sampler) and train
         if args.class_balance_per_epoch:
             sampler = WeightedRandomSampler(train_dataset.example_weights, train_dataset.num_samples, generator=g)
