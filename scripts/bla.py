@@ -84,7 +84,7 @@ def foo(data_loader, model, device, temporal=False):
         print(img.shape)
         out = model(img)
         outputs.extend(out)
-        target.extend(target)
+        targets.extend(target)
         samples.extend(sample_name)
     return outputs, targets, samples
 
