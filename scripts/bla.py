@@ -81,9 +81,8 @@ def foo(data_loader, model, device, temporal=False):
             img = img.transpose(2, 1)  # Reshape to: (batch_size, channels, seq-len, W, H)
         sample_name = batch['sample_name']
         target = batch['label']
-        print(img.shape)
         out = model(img)
-        outputs.extend(out)
+        outputs.extend(out.cpu().detach().numpy())
         targets.extend(target)
         samples.extend(sample_name)
     return outputs, targets, samples
