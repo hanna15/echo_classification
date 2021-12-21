@@ -70,12 +70,12 @@ def get_data_loader(fold, views=['KAPAP', 'CV'], train=False, temp=False):
     return data_loader
 
 
-def foo(data_loader, model, device, temporal=False, view_no=0):
+def foo(data_loader, model, device, temporal=False, view='KAPAP'):
     outputs = []
     targets = []
     samples = []
     for batch in data_loader:
-        img = batch['frame'][view_no].to(device) # Select frames for correct view
+        img = batch['frame'][view].to(device)  # Select frames for correct view
         if temporal:
             img = img.transpose(2, 1)  # Reshape to: (batch_size, channels, seq-len, W, H)
         sample_name = batch['sample_name']
@@ -98,7 +98,6 @@ def main():
         val_data_loader = get_data_loader(fold, args.views, temp=args.temp)
         if args.train_set:
             train_data_loader = get_data_loader(fold, args.views, train=True, temp=args.temp)
-        view_no = 0
         for model_dir, view in zip(args.model_dir_paths, args.views):
             if args.temp:
                 model = get_resnet3d_18(num_classes=num_classes, model_type='r3d_18').to(device)
@@ -110,13 +109,12 @@ def main():
             model.load_state_dict(torch.load(model_path, map_location=device))
             model.eval()
             model = model.to(device)
-            outputs, targets, samples = foo(val_data_loader, model, device, temporal=args.temp, view_no=view_no)
+            outputs, targets, samples = foo(val_data_loader, model, device, temporal=args.temp, view=view)
             total_outs.append(outputs)
             total_targets.append(targets)
             total_samples.append(samples)
             vid_ids = [s.split('_')[0] for s in samples]
             total_vid_ids.append(vid_ids)
-            view_no += 1
     print(set(total_vid_ids[0]) == set(total_vid_ids[1]))
     print(set(total_samples[0]) == set(total_samples[1]))
     print(total_samples[0] == total_samples[1])
