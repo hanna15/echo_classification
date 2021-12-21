@@ -59,7 +59,7 @@ def get_data_loader(fold, views=['KAPAP', 'CV'], train=False, temp=False):
     label_path = os.path.join('label_files', 'labels_' + args.label_type + '.pkl')
     aug_type = 5 if train else 0
     transforms = get_transforms(index_file_path, dataset_orig_img_scale=args.scale, resize=args.size,
-                                augment=aug_type, fold=fold, valid=(not train), view=view,
+                                augment=aug_type, fold=fold, valid=(not train), view=views,
                                 crop_to_corner=args.crop, segm_mask_only=args.segm_only)
     dataset = EchoDataset(index_file_path, label_path, cache_dir=args.cache_dir,
                           transform=transforms, scaling_factor=args.scale, procs=args.n_workers,
