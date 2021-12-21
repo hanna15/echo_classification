@@ -62,8 +62,7 @@ def get_data_loader(fold, view='KAPAP', train=False):
     dataset = EchoDataset(index_file_path, label_path, cache_dir=args.cache_dir,
                           transform=transforms, scaling_factor=args.scale, procs=args.n_workers,
                           percentile=args.max_p, view=view, min_expansion=args.min_expansion,
-                          num_rand_frames=args.num_rand_frames, segm_masks=args.segm_only, video_ids=args.video_ids,
-                          max_frame=args.max_frame)
+                          num_rand_frames=args.num_rand_frames, segm_masks=args.segm_only, video_ids=args.video_ids)
     data_loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=args.n_workers)
     return data_loader
 
