@@ -1,6 +1,7 @@
 import torch
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from utils.transforms2 import get_transforms
+from utils.helpers import get_index_file_path
 from echo_ph.data import EchoDataset
 import cv2
 from pytorch_grad_cam import GradCAM
@@ -60,13 +61,10 @@ parser.add_argument('--dynamic', action='store_true', help='If run on dynamic da
 def get_data_loader(train=False):
     if args.dynamic:
         index_file_path = os.path.join('index_files', 'dynamic_test_index.npy')
-    elif args.video_ids:
-        index_file_path = None
+    elif args.video_ids is None:
+        index_file_path = get_index_file_path(args.k, args.fold, args.label_type, train=train)
     else:
-        idx_dir = 'index_files' if args.k is None else os.path.join('index_files', 'k' + str(args.k))
-        idx_file_end = '' if args.fold is None else '_' + str(args.fold)
-        idx_file_base_name = 'train_samples_' if train else 'valid_samples_'
-        index_file_path = os.path.join(idx_dir, idx_file_base_name + args.label_type + idx_file_end + '.npy')
+        index_file_path = None
     if args.dynamic:
         label_path = os.path.join('label_files', 'dynamic_test_labels.pkl')
     else:
