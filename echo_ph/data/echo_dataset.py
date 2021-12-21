@@ -246,9 +246,9 @@ class EchoDataset(Dataset):
     def __getitem__(self, idx):
         label = self.targets[idx]
         sample_name = self.sample_names[idx]
-        frame_per_view = self.frames[idx]
+        frame_per_view = dict.fromkeys(self.views, [])
         for view in self.views:
-            frames = frame_per_view[view].astype(np.uint8)
+            frames = self.frames[view][idx].astype(np.uint8)
             if self.temporal:
                 frames = list(frames)
             s = (frames, sample_name.split('_')[0] + view)
