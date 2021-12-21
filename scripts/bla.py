@@ -74,12 +74,11 @@ def foo(data_loader, model, device):
     for batch in data_loader:
         img = batch['frame'].to(device)
         sample_name = batch['sample_name']
-        video_id = sample_name.split('_')
         target = batch['label']
         out = model(img)
         outputs.extend(out)
         target.extend(target)
-        samples.extend(video_id)
+        samples.extend(sample_name)
     return outputs, targets, samples
 
 
