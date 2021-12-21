@@ -77,6 +77,7 @@ def foo(data_loader, model, device, temporal=False):
             img = img.transpose(2, 1)  # Reshape to: (batch_size, channels, seq-len, W, H)
         sample_name = batch['sample_name']
         target = batch['label']
+        print(img.shape)
         out = model(img)
         outputs.extend(out)
         target.extend(target)
@@ -97,6 +98,7 @@ def main():
                 temp = True
                 model = get_resnet3d_18(num_classes=num_classes, model_type='r3d_18').to(device)
             else:  # spatial
+                temp = False
                 model = get_resnet18(num_classes=num_classes).to(device)
             model_path = sorted(os.listdir(model_dir))[fold]  # fetch the model corresponding to corresponding fold
             model_path = os.path.join(model_dir, model_path)
