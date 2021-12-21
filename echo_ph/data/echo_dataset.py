@@ -247,14 +247,13 @@ class EchoDataset(Dataset):
         label = self.targets[idx]
         sample_name = self.sample_names[idx]
         frame_per_view = self.frames[idx]
-        trans_frames_per_view = []
         for view in self.views:
             frames = frame_per_view[view].astype(np.uint8)
             if self.temporal:
                 frames = list(frames)
             s = (frames, sample_name.split('_')[0] + view)
             frames = self.transform(s)
-            trans_frames_per_view.append(frames)
+            frame_per_view[view] = frames  # over-write with transformed frames
             if self.visualise_frames:
                 if self.temporal:
                     for i, f in enumerate(frames):
@@ -265,5 +264,5 @@ class EchoDataset(Dataset):
                     plt.imshow(frames.squeeze(0), cmap='Greys_r')
                     plt.title(str(label) + ' - ' + str(sample_name))
                     plt.show()
-        sample = {'label': label, 'frame': trans_frames_per_view, 'sample_name': sample_name}
+        sample = {'label': label, 'frame': frame_per_view, 'sample_name': sample_name}
         return sample
