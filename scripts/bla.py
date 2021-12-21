@@ -67,12 +67,14 @@ def get_data_loader(fold, view='KAPAP', train=False):
     return data_loader
 
 
-def foo(data_loader, model, device):
+def foo(data_loader, model, device, temporal=False):
     outputs = []
     targets = []
     samples = []
     for batch in data_loader:
         img = batch['frame'].to(device)
+        if temporal:
+            img = img.transpose(2, 1)  # Reshape to: (batch_size, channels, seq-len, W, H)
         sample_name = batch['sample_name']
         target = batch['label']
         out = model(img)
@@ -89,8 +91,10 @@ def main():
         total_outs = []
         total_targets = []
         total_samples = []
+        temp = False
         for model_dir, model_type, view in zip(args.model_dir_paths, args.model_types, args.views):
             if model_type == 'temporal' or model_type == 'temp':
+                temp = True
                 model = get_resnet3d_18(num_classes=num_classes, model_type='r3d_18').to(device)
             else:  # spatial
                 model = get_resnet18(num_classes=num_classes).to(device)
@@ -103,7 +107,7 @@ def main():
             model.load_state_dict(torch.load(model_path, map_location=device))
             model.eval()
             model = model.to(device)
-            outputs, targets, samples = foo(val_data_loader, model, device)
+            outputs, targets, samples = foo(val_data_loader, model, device, temporal=temp)
             total_outs.append(outputs)
             total_targets.append(targets)
             total_samples.append(samples)
