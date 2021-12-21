@@ -89,6 +89,9 @@ class EchoDataset(Dataset):
         self.views = view
         if isinstance(self.views, list):
             self.frames = [[] for _ in range(len(self.views))]
+            if num_rand_frames is None and all_frames is None:
+                print("Multiple views are only supported in conjunction with random frames or all frames,"
+                      "not min/max frames - as those differ between views")
         else:
             self.frames = [[]]
         self.targets = []
@@ -131,7 +134,6 @@ class EchoDataset(Dataset):
                             self.sample_names.append(sample_name)
                         view_no += 1
         t = time() - t
-        self.frames = np.squeeze(self.frames)  # Such that if only a single view, will just be 1-dim list
         self.num_samples = len(self.frames)
         self.labels, cnts = np.unique(self.targets, return_counts=True)
         # Calculate class weights for weighted loss
@@ -247,21 +249,24 @@ class EchoDataset(Dataset):
     def __getitem__(self, idx):
         label = self.targets[idx]
         sample_name = self.sample_names[idx]
-        frame = self.frames[idx]
-        frame = frame.astype(np.uint8)
-        if self.temporal:
-            frame = list(frame)
-        s = (frame, sample_name.split('_')[0] + self.view)
-        frame = self.transform(s)
-        if self.visualise_frames:
+        frame_per_view = self.frames[idx]
+        trans_frames_per_view = []
+        for view, frame in zip(self.views, frame_per_view):
+            frame = frame.astype(np.uint8)
             if self.temporal:
-                for i, f in enumerate(frame):
-                    plt.imshow(f.squeeze(0), cmap='Greys_r')
-                    plt.title(str(label) + ' - ' + str(sample_name) + '-' + str(i))
+                frame = list(frame)
+            s = (frame, sample_name.split('_')[0] + view)
+            frame = self.transform(s)
+            trans_frames_per_view.append(frame)
+            if self.visualise_frames:
+                if self.temporal:
+                    for i, f in enumerate(frame):
+                        plt.imshow(f.squeeze(0), cmap='Greys_r')
+                        plt.title(str(label) + ' - ' + str(sample_name) + '-' + str(i))
+                        plt.show()
+                else:
+                    plt.imshow(frame.squeeze(0), cmap='Greys_r')
+                    plt.title(str(label) + ' - ' + str(sample_name))
                     plt.show()
-            else:
-                plt.imshow(frame.squeeze(0), cmap='Greys_r')
-                plt.title(str(label) + ' - ' + str(sample_name))
-                plt.show()
-        sample = {'label': label, 'frame': frame, 'sample_name': sample_name}
+        sample = {'label': label, 'frame': trans_frames_per_view, 'sample_name': sample_name}
         return sample
