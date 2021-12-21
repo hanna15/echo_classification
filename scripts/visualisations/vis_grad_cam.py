@@ -91,7 +91,7 @@ def get_save_grad_cam_images(data_loader, model, cam, device, subset='valid'):
         os.makedirs(output_dir, exist_ok=True)
     video_frames = {}
     for batch in data_loader:
-        img = batch['frame'].to(device)
+        img = batch['frame'][args.view].to(device)
         sample_name = batch['sample_name'][0]  # get first, because batch size 1
         video_id = sample_name.split('_')[0]  # get first, because batch size 1
         print('Processing video_id', video_id)

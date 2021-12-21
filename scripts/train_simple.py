@@ -226,7 +226,7 @@ def run_batch(batch, model, criterion=None, binary=False):
     :return: The required metrics for this batch, as well as the predictions and targets
     """
     dev = device('cuda' if cuda.is_available() else 'cpu')
-    input = batch["frame"].to(dev)  # Batch_size, (seq_len), num_channels, w, h
+    input = batch["frame"][args.view].to(dev)  # Batch_size, (seq_len), num_channels, w, h => only single view for training
     if args.temporal:
         input = input.transpose(2, 1)  # Reshape to: (batch_size, channels, seq-len, W, H)
     targets = batch["label"].to(dev)
