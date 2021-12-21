@@ -26,8 +26,6 @@ parser = ArgumentParser(
 parser.add_argument('--model_dir_paths', nargs='+',
                     help='set to path of a model state dict, to evaluate on. If None, use resnet18 pretrained on '
                          'Imagenet only.')
-parser.add_argument('--model_types', default=['temporal', 'temporal'], nargs='+',
-                    help='set model types (spatial / temporal) for each of the provided model paths (same order)')
 parser.add_argument('--views',  nargs='+', default=['KAPAP', 'CV'])
 parser.add_argument('--size', default=224, type=int, help='Size of images (frames) to resize to')
 # Arguments that must be the same for all models
@@ -50,9 +48,10 @@ parser.add_argument('--train_set', action='store_true', help='Also evaluate on t
 parser.add_argument('--segm_only', action='store_true', help='Only evaluate on the segmentation masks')
 parser.add_argument('--video_ids', default=None, nargs='+', type=int, help='Get results for specific video ids')
 parser.add_argument('--crop', action='store_true', help='set this flag to crop to corners')
+parser.add_argument('--temp', action='store_true', help='set this flag if temporal model')
 
 
-def get_data_loader(fold, view='KAPAP', train=False, temp=False):
+def get_data_loader(fold, views=['KAPAP', 'CV'], train=False, temp=False):
     if args.video_ids is None:
         index_file_path = get_index_file_path(args.k, fold, args.label_type, train=train)
     else:
@@ -64,19 +63,19 @@ def get_data_loader(fold, view='KAPAP', train=False, temp=False):
                                 crop_to_corner=args.crop, segm_mask_only=args.segm_only)
     dataset = EchoDataset(index_file_path, label_path, cache_dir=args.cache_dir,
                           transform=transforms, scaling_factor=args.scale, procs=args.n_workers,
-                          percentile=args.max_p, view=view, min_expansion=args.min_expansion,
+                          percentile=args.max_p, view=views, min_expansion=args.min_expansion,
                           num_rand_frames=args.num_rand_frames, segm_masks=args.segm_only, video_ids=args.video_ids,
                           temporal=temp, clip_len=args.clip_len, period=args.period)
     data_loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.n_workers)
     return data_loader
 
 
-def foo(data_loader, model, device, temporal=False):
+def foo(data_loader, model, device, temporal=False, view_no=0):
     outputs = []
     targets = []
     samples = []
     for batch in data_loader:
-        img = batch['frame'].to(device)
+        img = batch['frame'][view_no].to(device) # Select frames for correct view
         if temporal:
             img = img.transpose(2, 1)  # Reshape to: (batch_size, channels, seq-len, W, H)
         sample_name = batch['sample_name']
@@ -95,26 +94,32 @@ def main():
         total_outs = []
         total_targets = []
         total_samples = []
+        total_vid_ids = []
+        val_data_loader = get_data_loader(fold, args.views, temp=args.temp)
+        if args.train_set:
+            train_data_loader = get_data_loader(fold, args.views, train=True, temp=args.temp)
+        view_no = 0
         for model_dir, model_type, view in zip(args.model_dir_paths, args.model_types, args.views):
-            if model_type == 'temporal' or model_type == 'temp':
-                temp = True
+            if args.temp:
                 model = get_resnet3d_18(num_classes=num_classes, model_type='r3d_18').to(device)
             else:  # spatial
-                temp = False
                 model = get_resnet18(num_classes=num_classes).to(device)
             model_path = sorted(os.listdir(model_dir))[fold]  # fetch the model corresponding to corresponding fold
             model_path = os.path.join(model_dir, model_path)
-            val_data_loader = get_data_loader(fold, view, temp=temp)
-            if args.train_set:
-                train_data_loader = get_data_loader(fold, view, train=True, temp=temp)
             print(f'Done loading data for fold {fold}, for model {model_path}')
             model.load_state_dict(torch.load(model_path, map_location=device))
             model.eval()
             model = model.to(device)
-            outputs, targets, samples = foo(val_data_loader, model, device, temporal=temp)
+            outputs, targets, samples = foo(val_data_loader, model, device, temporal=args.temp, view_no=view_no)
             total_outs.append(outputs)
             total_targets.append(targets)
             total_samples.append(samples)
+            vid_ids = [s.split('_')[0] for s in samples]
+            total_vid_ids.append(vid_ids)
+            view_no += 1
+    print(set(total_vid_ids[0]) == set(total_vid_ids[1]))
+    print(set(total_samples[0]) == set(total_samples[1]))
+    print(total_samples[0] == total_samples[1])
 
 
 if __name__ == '__main__':
