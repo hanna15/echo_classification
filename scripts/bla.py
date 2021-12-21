@@ -39,6 +39,8 @@ parser.add_argument('--k', default=10, type=int, help='Set total number of folds
 parser.add_argument('--n_workers', default=8, type=int)
 parser.add_argument('--max_p', default=95, type=int)
 parser.add_argument('--batch_size', type=int, default=64, help='Batch size for training')
+parser.add_argument('--clip_len', type=int, default=0, help='How many frames to select per video')
+parser.add_argument('--period', type=int, default=1, help='Sample period, sample every n-th frame')
 # Optional additional arguments
 parser.add_argument('--min_expansion', action='store_true',
                     help='Percentile for min expansion frames instead of maximum')
@@ -64,7 +66,7 @@ def get_data_loader(fold, view='KAPAP', train=False, temp=False):
                           transform=transforms, scaling_factor=args.scale, procs=args.n_workers,
                           percentile=args.max_p, view=view, min_expansion=args.min_expansion,
                           num_rand_frames=args.num_rand_frames, segm_masks=args.segm_only, video_ids=args.video_ids,
-                          temporal=temp)
+                          temporal=temp, clip_len=args.clip_len, period=args.period)
     data_loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.n_workers)
     return data_loader
 
