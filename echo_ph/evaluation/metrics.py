@@ -2,14 +2,14 @@ import os
 import torch
 import numpy as np
 from sklearn.metrics import f1_score, accuracy_score, balanced_accuracy_score, roc_auc_score, classification_report, \
-    confusion_matrix
+    confusion_matrix, mean_squared_error
 import pandas as pd
 import csv
 from statistics import multimode
 
 
 # ==== Helper functions related to Metrics
-def get_metric_dict(targets, preds, probs=None, binary=True, subset='', prefix='', tb=True):
+def get_metric_dict(targets, preds, probs=None, binary=True, subset='', prefix='', tb=True, regression=False):
     """
     Get dictionary of metrics (f1, accuracy, balanced accuracy, roc_auc) and associated values
     :param targets: Targets / labels
@@ -19,6 +19,7 @@ def get_metric_dict(targets, preds, probs=None, binary=True, subset='', prefix='
     :param subset: 'valid' or 'train', if it should be specified in metric directory
     :param prefix: If any prefix, in front of all metric-keys in directory (e.g. video-)
     :param tb: Set to true, if calculating metrics for tensorboard during training (has different metric keys)
+    :param regression: Set to true, if add regression metrics
     :return: Metrics directory with f1, accuracy, balanced accuracy (and roc-auc score, if probs is not None)
     """
     b_acc = balanced_accuracy_score(targets, preds)
@@ -39,12 +40,15 @@ def get_metric_dict(targets, preds, probs=None, binary=True, subset='', prefix='
                 )
         else:  # For the Frame-wise, only report balanced accuracy.
             metrics = {prefix + 'bACC': b_acc}
+
     if probs is not None:  # Also get ROC_AUC score on probabilities, for binary classification
         roc_auc = roc_auc_score(targets, probs)
         if tb:
             metrics.update({prefix + 'roc_auc' + '/' + subset: roc_auc})
         else:
             metrics.update({prefix + 'ROC_AUC': roc_auc})
+    if regression:
+        metrics.update({prefix + 'mse' + '/' + subset: mean_squared_error(targets, preds)})
     return metrics
 
 
@@ -92,7 +96,8 @@ def get_save_confusion_matrix(targets, preds, file_name, metric_res_dir='results
 
 
 class Metrics():
-    def __init__(self, targets, samples, model_outputs=None, preds=None, sm_probs=None, binary=True, tb=True):
+    def __init__(self, targets, samples, model_outputs=None, preds=None, sm_probs=None, binary=True, tb=True,
+                 regression=False):
         """
         :param model_outputs: (Optional) The raw model outputs, i.e., un-normalized scores (logits), before softmax or
                               sigmoid. If model_outputs is not provided, must provide preds and sm_probs.
@@ -107,7 +112,7 @@ class Metrics():
         :param binary: If binary classification (because ROC_AUC is only defined for binary)
         :param tb: Set to true if get these scores for tensorboard (metric dict looks different than during eval)
         """
-        if preds is None or sm_probs is None:
+        if preds is None and sm_probs is None:
             if model_outputs is None:
                 print("Must provide model outputs, if preds and/or probs not provided")
                 return
@@ -118,6 +123,7 @@ class Metrics():
         self.preds = preds
         self.sm_probs = sm_probs
         self.binary = binary
+        self.regression = regression
         if not self.binary:  # probs won't be needed for multi-class prediction
             self.sm_probs = None
         self.tb = tb
@@ -162,7 +168,7 @@ class Metrics():
             self.get_softmax_probs()
         prefix = '' if self.tb else 'Frame '
         return get_metric_dict(self.targets, self.preds, probs=self.sm_probs, binary=self.binary,
-                               prefix=prefix, subset=subset, tb=self.tb)
+                               prefix=prefix, subset=subset, tb=self.tb, regression=self.regression)
 
     def get_per_subject_scores(self, subset=''):
         """
@@ -174,8 +180,8 @@ class Metrics():
         if self.video_targets is None:
             self._set_subject_res_lists()
         prefix = 'video-' if self.tb else 'Video '
-        return get_metric_dict(self.video_targets, self.video_preds, probs=self.mean_probs_per_video,
-                               binary=self.binary, subset=subset, prefix=prefix, tb=self.tb)
+        return get_metric_dict(self.video_targets, self.video_preds, probs=self.mean_probs_per_video, binary=self.binary,
+                               subset=subset, prefix=prefix, tb=self.tb, regression=self.regression)
 
     def get_subject_lists(self):
         """
@@ -227,7 +233,10 @@ class Metrics():
         mean_probs_per_video = [] if self.binary else None
         for res in res_per_video.values():
             # Pick the most frequent label for the video (works with binary or multi-labels).
-            video_pred = max(multimode(res['pred']))  # In case of a tie, pick the higher label (more PH)
+            if self.regression:
+                video_pred = res['pred'][0][0]
+            else:
+                video_pred = max(multimode(res['pred']))  # In case of a tie, pick the higher label (more PH)
             ratio_corr_pred = res['pred'].count(video_pred) / len(res['pred'])  # Count(corr_pred)/ Total len
             video_confidance.append(ratio_corr_pred)
             preds_per_video.append(video_pred)

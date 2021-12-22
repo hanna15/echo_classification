@@ -68,7 +68,7 @@ class EchoDataset(Dataset):
     def __init__(self, index_file_path, label_file_path, videos_dir=None, cache_dir=None,
                  transform=None, scaling_factor=0.5, procs=3, visualise_frames=False, percentile=90, view='KAPAP',
                  min_expansion=False, num_rand_frames=None, segm_masks=False, temporal=False, period=1, clip_len=0,
-                 all_frames=False, max_frame=None, video_ids=None, dynamic=False):
+                 all_frames=False, max_frame=None, video_ids=None, dynamic=False, regression=False):
         """
         Dataset for echocardiogram processing and classification in PyTorch.
         :param index_file_path: Path to a numpy file, listing all sample names to use in this dataset.
@@ -111,6 +111,7 @@ class EchoDataset(Dataset):
         self.all_frames = all_frames
         self.max_frame = max_frame
         self.segm_masks = segm_masks
+        self.regression = regression
         self.view_to_segmodel_view = {  # When training on given view, what segmentation pretrained model view to use
             'KAPAP': 'psax',
             'CV': 'a4c'
@@ -134,11 +135,14 @@ class EchoDataset(Dataset):
         self.num_samples = len(self.frames)
         self.labels, cnts = np.unique(self.targets, return_counts=True)
         # Calculate class weights for weighted loss
-        self.class_weights = class_weight.compute_class_weight('balanced', classes=self.labels, y=self.targets)
-        if len(self.class_weights) <= max(self.labels):  # we have a missing label = not calculate example weights (hax)
+        if self.regression:
             self.example_weights = None
         else:
-            self.example_weights = [self.class_weights[t] for t in self.targets]
+            self.class_weights = class_weight.compute_class_weight('balanced', classes=self.labels, y=self.targets)
+            if len(self.class_weights) <= max(self.labels):  # we have a missing label = not calculate example weights (hax)
+                self.example_weights = None
+            else:
+                self.example_weights = [self.class_weights[t] for t in self.targets]
         print(f'Loaded Dataset with {self.num_samples} samples in {t:.2f} seconds. Label distribution:')
         for label, cnt in zip(self.labels, cnts):  # Print number of occurrences of each label
             print(label, ':', cnt)
@@ -184,6 +188,8 @@ class EchoDataset(Dataset):
         :param sample: Sample from the file list paths.
         :return: (line regions, parsed program, sample name)
         """
+        if np.random.random() < 0.7:
+            return None, None, None
         views = self.views
         videos = []
         for view in views:
@@ -238,6 +244,9 @@ class EchoDataset(Dataset):
         if sample not in all_labels:  # ATH! When proper index files used, this should not happen
             return None, None, None
         label = all_labels[sample]
+        if self.regression:  # normalise labels
+            max_label = max(all_labels.values())
+            label = label/max_label
         return frames_per_view, label, sample_names
 
     def __len__(self):
