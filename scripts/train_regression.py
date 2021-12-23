@@ -311,6 +311,8 @@ def save_model_and_res(model, run_name, target_lst, pred_lst, val_target_lst, va
         torch.save(model.module.state_dict(), os.path.join(model_dir, model_file_name))
     else:
         torch.save(model.state_dict(), os.path.join(model_dir, model_file_name))
+    if not os.path.exists(res_dir):
+        os.makedirs(res_dir)
     np.save(os.path.join(res_dir, 'train_' + targ_file_name), target_lst)
     np.save(os.path.join(res_dir, 'train_' + pred_file_name), pred_lst)
     np.save(os.path.join(res_dir, 'train_' + sample_file_names), sample_names)
