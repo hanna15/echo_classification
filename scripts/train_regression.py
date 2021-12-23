@@ -203,6 +203,8 @@ def get_run_name():
         run_name += '_crop'
     if args.view != 'KAPAP':
         run_name += '_' + args.view
+    if args.regression:
+        run_name += 'regr'
     return run_name
 
 
