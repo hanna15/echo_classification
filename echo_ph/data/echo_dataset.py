@@ -90,7 +90,8 @@ class EchoDataset(Dataset):
             print("Multiple views are only supported in conjunction with random frames or all frames,"
                   "not min/max frames - as those differ between views")
         self.views = view if isinstance(view, list) else [view]
-        self.frames = dict.fromkeys(self.views, [])
+        # self.frames = dict.fromkeys(self.views, [])
+        self.frames = [[]]
         self.targets = []
         self.sample_names = []
         self.transform = transform
@@ -127,7 +128,7 @@ class EchoDataset(Dataset):
                     view_no = 0
                     for frames, view in zip(frames_per_view, self.views):
                         for frame, sample_name in zip(frames, sample_names):  # Each frame becomes an individual sample (with the same label)
-                            self.frames[view].append(frame)
+                            self.frames.append(frame)
                             self.targets.append(label)
                             self.sample_names.append(sample_name)
                         view_no += 1
@@ -188,8 +189,8 @@ class EchoDataset(Dataset):
         :param sample: Sample from the file list paths.
         :return: (line regions, parsed program, sample name)
         """
-        if np.random.random() < 0.7:
-            return None, None, None
+        # if np.random.random() < 0.7:
+        #    return None, None, None
         views = self.views
         videos = []
         for view in views:
@@ -257,7 +258,7 @@ class EchoDataset(Dataset):
         sample_name = self.sample_names[idx]
         frame_per_view = dict.fromkeys(self.views, [])
         for view in self.views:
-            frames = self.frames[view][idx].astype(np.uint8)
+            frames = self.frames[idx][0].astype(np.uint8)
             if self.temporal:
                 frames = list(frames)
             s = (frames, sample_name.split('_')[0] + view)
