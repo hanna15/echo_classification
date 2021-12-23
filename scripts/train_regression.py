@@ -139,6 +139,14 @@ parser.add_argument('--multi_gpu', action='store_true', help='If use more than o
 BASE_MODEL_DIR = 'models'
 
 
+def bla(num):
+    if num < 0.5:
+        return 0
+    if num < 1.5:
+        return 1
+    return 2
+
+
 def get_run_name():
     """
     Returns a 'semi'-unique name according to most important arguments.
@@ -253,7 +261,7 @@ def run_batch(batch, model, criterion=None, binary=False):
             loss = criterion(outputs, targets)
     else:  # when just evaluating, no loss
         loss = None
-    outputs = torch.round(outputs)  # Round up, because we create buckets
+    # outputs = torch.round(outputs).squeeze()  # Round up, because we create buckets
     return loss, outputs, targets, sample_names, attention
 
 
@@ -351,10 +359,15 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
         for train_batch in train_loader:
             loss, out, targets, sample_names, att = run_batch(train_batch, model, criterion, binary)
             epoch_samples.extend(sample_names)
-            epoch_targets.extend(targets)
             if att is not None:
                 epoch_attention.extend(att.cpu().detach().numpy())
-            epoch_outs.extend(out.cpu().detach().numpy())
+            targets = [t * 2 for t in targets]
+            # print('targ len', len(targets))
+            epoch_targets.extend(targets)
+            out = [bla(o[0].item() * 2) for o in out]
+            # print('out len', len(out))
+            # epoch_outs.extend(out.cpu().detach().numpy())
+            epoch_outs.extend(out)
             if not args.regression:
                 epoch_prob_1s.extend(sm(out)[:, 1].cpu().detach().numpy())
             epoch_loss += loss.item() * args.batch_size
@@ -369,11 +382,15 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
             for valid_batch in valid_loader:
                 val_loss, val_out, val_targets, val_sample_names, val_att = run_batch(valid_batch, model, criterion, binary)
                 epoch_valid_samples.extend(val_sample_names)
-                epoch_valid_targets.extend(val_targets)
+                #epoch_valid_targets.extend(val_targets)
                 if val_att is not None:
                     epoch_valid_attention.append(val_att.cpu().detach().numpy())
                 # epoch_valid_preds.extend(torch.max(val_out, dim=1)[1])
-                epoch_valid_outs.extend(val_out.cpu().detach().numpy())
+                #epoch_valid_outs.extend(val_out.cpu().detach().numpy())
+                val_targets = [t * 2 for t in val_targets]
+                epoch_valid_targets.extend(val_targets)
+                val_out = [bla(o[0].item() * 2) for o in val_out]
+                epoch_valid_outs.extend(val_out)
                 if not args.regression:
                     epoch_valid_prob_1s.extend(sm(val_out)[:, 1].cpu().detach().numpy())
                 epoch_valid_loss += val_loss.item() * args.batch_size
