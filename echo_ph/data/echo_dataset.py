@@ -189,8 +189,8 @@ class EchoDataset(Dataset):
         :param sample: Sample from the file list paths.
         :return: (line regions, parsed program, sample name)
         """
-        if np.random.random() < 0.7:
-           return None, None, None
+        # if np.random.random() < 0.7:
+        #    return None, None, None
         views = self.views
         videos = []
         for view in views:
