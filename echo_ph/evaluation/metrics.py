@@ -233,10 +233,7 @@ class Metrics():
         mean_probs_per_video = [] if self.binary else None
         for res in res_per_video.values():
             # Pick the most frequent label for the video (works with binary or multi-labels).
-            if self.regression:
-                video_pred = res['pred'][0][0]
-            else:
-                video_pred = max(multimode(res['pred']))  # In case of a tie, pick the higher label (more PH)
+            video_pred = max(multimode(res['pred']))  # In case of a tie, pick the higher label (more PH)
             ratio_corr_pred = res['pred'].count(video_pred) / len(res['pred'])  # Count(corr_pred)/ Total len
             video_confidance.append(ratio_corr_pred)
             preds_per_video.append(video_pred)

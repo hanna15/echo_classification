@@ -91,7 +91,7 @@ class EchoDataset(Dataset):
                   "not min/max frames - as those differ between views")
         self.views = view if isinstance(view, list) else [view]
         # self.frames = dict.fromkeys(self.views, [])
-        self.frames = [[]]
+        self.frames = []
         self.targets = []
         self.sample_names = []
         self.transform = transform
@@ -125,13 +125,13 @@ class EchoDataset(Dataset):
         with mp.Pool(processes=procs) as pool:
             for frames_per_view, label, sample_names in pool.map(self.load_sample, samples):
                 if frames_per_view is not None and label is not None and sample_names is not None:
-                    view_no = 0
-                    for frames, view in zip(frames_per_view, self.views):
-                        for frame, sample_name in zip(frames, sample_names):  # Each frame becomes an individual sample (with the same label)
-                            self.frames.append(frame)
-                            self.targets.append(label)
-                            self.sample_names.append(sample_name)
-                        view_no += 1
+                    frames_per_view = np.swapaxes(frames_per_view, 0, 1)  # Shape: no_frames, no_views, ch, w, h
+                    for frame, sample_name in zip(frames_per_view, sample_names):
+                        # frames is here actually a list of frames for each view
+                        self.frames.append(frame)
+                        self.targets.append(label)
+                        self.sample_names.append(sample_name)
+
         t = time() - t
         self.num_samples = len(self.frames)
         self.labels, cnts = np.unique(self.targets, return_counts=True)
@@ -189,8 +189,8 @@ class EchoDataset(Dataset):
         :param sample: Sample from the file list paths.
         :return: (line regions, parsed program, sample name)
         """
-        # if np.random.random() < 0.7:
-        #    return None, None, None
+        if np.random.random() < 0.8:
+           return None, None, None
         views = self.views
         videos = []
         for view in views:
