@@ -139,7 +139,7 @@ parser.add_argument('--multi_gpu', action='store_true', help='If use more than o
 BASE_MODEL_DIR = 'models'
 
 
-def bla(num):
+def round_to_class(num):
     if num < 0.5:
         return 0
     if num < 1.5:
@@ -365,12 +365,9 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
             epoch_samples.extend(sample_names)
             if att is not None:
                 epoch_attention.extend(att.cpu().detach().numpy())
-            targets = [t * 2 for t in targets]
-            # print('targ len', len(targets))
+            targets = [t * 2 for t in targets]  # De-normalise (quick hack sln) => multiply by max no.
             epoch_targets.extend(targets)
-            out = [bla(o[0].item() * 2) for o in out]
-            # print('out len', len(out))
-            # epoch_outs.extend(out.cpu().detach().numpy())
+            out = [round_to_class(o[0].item() * 2) for o in out] # De-normalise (quick hack sln) & round to class
             epoch_outs.extend(out)
             if not args.regression:
                 epoch_prob_1s.extend(sm(out)[:, 1].cpu().detach().numpy())
@@ -386,14 +383,11 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
             for valid_batch in valid_loader:
                 val_loss, val_out, val_targets, val_sample_names, val_att = run_batch(valid_batch, model, criterion, binary)
                 epoch_valid_samples.extend(val_sample_names)
-                #epoch_valid_targets.extend(val_targets)
                 if val_att is not None:
                     epoch_valid_attention.append(val_att.cpu().detach().numpy())
-                # epoch_valid_preds.extend(torch.max(val_out, dim=1)[1])
-                #epoch_valid_outs.extend(val_out.cpu().detach().numpy())
                 val_targets = [t * 2 for t in val_targets]
                 epoch_valid_targets.extend(val_targets)
-                val_out = [bla(o[0].item() * 2) for o in val_out]
+                val_out = [round_to_class(o[0].item() * 2) for o in val_out]
                 epoch_valid_outs.extend(val_out)
                 if not args.regression:
                     epoch_valid_prob_1s.extend(sm(val_out)[:, 1].cpu().detach().numpy())
@@ -452,9 +446,6 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
                             best_early_stops[i] = log_dict[eval_metric]  # update
                             num_val_fails = 0
                             if not saved_model_this_round:
-                                # save_model_and_res(model, run_name, target_lst, pred_lst, targ_lst_valid,
-                                #                    pred_lst_valid, epoch_samples, epoch_valid_samples,
-                                #                    epoch=epoch, fold=args.fold)
                                 save_model_and_res(model, run_name, target_lst, epoch_outs, targ_lst_valid,
                                                    epoch_valid_outs, epoch_samples, epoch_valid_samples, epoch_attention,
                                                    epoch_valid_attention, epoch=epoch, fold=args.fold)
@@ -591,7 +582,10 @@ def main():
               weights=class_weights, binary=binary, use_wandb=use_wandb)
 
 
-def seed_worker(worker_id):
+def seed_worker():
+    """
+    To encourage reproducibility
+    """
     worker_seed = torch.initial_seed() % 2**32
     np.random.seed(worker_seed)
     random.seed(worker_seed)
