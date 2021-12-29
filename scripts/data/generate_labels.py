@@ -38,7 +38,7 @@ def main():
     elif args.num_classes == 4:
         label_maps = [label_map_4class]
     elif args.num_classes == 3:
-        label_maps = [label_map_3class, label_map_3class_2, label_map_3class_3, label_map_3class_4]
+        label_maps = [label_map_3class, label_map_3class_2, label_map_3class_3]
     elif args.num_classes == 2:
         label_maps = [label_map_2class, label_map_2class_drop0bis1_drop3]  # have 2 possibilities for 2-class
     else:  # if num_classes = -1 ==> I.e. all classes
