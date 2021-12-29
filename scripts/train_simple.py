@@ -47,7 +47,9 @@ parser.add_argument('--videos_dir', default=None,
                     help='Path to the directory containing the raw videos - if work on raw videos')
 parser.add_argument('--cache_dir', default=None,
                     help='Path to the directory containing the cached and processed numpy videos - if work on those')
-parser.add_argument('--label_type', default='2class_drop_ambiguous', choices=['2class', '2class_drop_ambiguous', '3class'],
+parser.add_argument('--label_type', default='2class_drop_ambiguous', choices=['2class', '2class_drop_ambiguous',
+                                                                              '3class', '3class_2', '3class_3',
+                                                                              '4class'],
                     help='How many classes for the labels, and in some cases also variations of dropping ambiguous '
                          'labels. Will be used to fetch the correct label file and train and valid index files')
 parser.add_argument('--fold', default=None, type=int,
@@ -504,26 +506,27 @@ def main():
     num_workers = (0 if args.num_workers == 1 else args.num_workers)
 
     # Model & Optimizers
+    num_classes = len(train_dataset.labels)
     if args.temporal:
         if args.model.endswith('18'):
             if args.self_attention or args.map_attention:
                 att_type = 'self' if args.self_attention else 'map'
-                model = Res3DAttention(num_classes=len(train_dataset.labels), ch=1, w=size, h=size, t=args.clip_len,
+                model = Res3DAttention(num_classes=num_classes, ch=1, w=size, h=size, t=args.clip_len,
                                        att_type=att_type, pretrained=args.pretrained).to(device)
             else:
-                model = get_resnet3d_18(num_classes=len(train_dataset.labels), pretrained=args.pretrained,
+                model = get_resnet3d_18(num_classes=num_classes, pretrained=args.pretrained,
                                         model_type=args.model).to(device)
         else:
-            model = get_resnet3d_50(num_classes=len(train_dataset.labels), pretrained=args.pretrained).to(device)
+            model = get_resnet3d_50(num_classes=num_classes, pretrained=args.pretrained).to(device)
     else:
         if args.model == 'resnet':
-            model = get_resnet18(num_classes=len(train_dataset.labels), pretrained=args.pretrained).to(device)
+            model = get_resnet18(num_classes=num_classes, pretrained=args.pretrained).to(device)
         elif args.model == 'res_simple':
-            model = resnet_simpler(num_classes=len(train_dataset.labels), drop_prob=args.dropout).to(device)
+            model = resnet_simpler(num_classes=num_classes, drop_prob=args.dropout).to(device)
         elif args.model == 'conv':
-            model = ConvNet(num_classes=len(train_dataset.labels), dropout_val=args.dropout).to(device)
+            model = ConvNet(num_classes=num_classes, dropout_val=args.dropout).to(device)
         else:
-            model = SimpleConvNet(num_classes=len(train_dataset.labels)).to(device)
+            model = SimpleConvNet(num_classes=num_classes).to(device)
     if args.multi_gpu:
         print("Training with multiple GPU")
         model = nn.DataParallel(model, dim=0)  # As we have batch-first
