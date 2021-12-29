@@ -40,8 +40,8 @@ label_map_2class_drop0bis1_drop3 = ({0: 0, 0.5: None, 1: 1, 1.5: 1, 2: 1, 2.5: 1
                                     '2class_drop_ambiguous')  # later parameter is descriptive name
 
 long_label_type_to_short = {'3class': '3',
-                            '3class2': '3_2',
-                            '3class3': '3_3',
+                            '3class_2': '3_2',
+                            '3class_3': '3_3',
                             '4class': '4',
                             '2class': '2',
                             '2class_drop_ambiguous': '2d'}
