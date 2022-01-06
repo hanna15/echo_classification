@@ -64,7 +64,7 @@ parser.add_argument('--run_id', type=str, default='',
                     help='Set a unique_run_id, to identify run if arguments alone are not enough to identify (e.g. when'
                          'running on same settings multiple times). Id will be pre-pended to the run name derived '
                          'from arguments. Default is empty string, i.e. only identify run with arguments.')
-parser.add_argument('--view', type=str, default='KAPAP', choices=['KAPAP', 'CV'],
+parser.add_argument('--view', type=str, default='KAPAP', choices=['KAPAP', 'CV', 'KAAP'],
                     help='What view to use')
 # Data parameters
 parser.add_argument('--scaling_factor', default=0.25, help='How much to scale (down) the videos, as a ratio of original '
