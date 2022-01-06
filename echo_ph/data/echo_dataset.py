@@ -115,6 +115,7 @@ class EchoDataset(Dataset):
         self.regression = regression
         self.view_to_segmodel_view = {  # When training on given view, what segmentation pretrained model view to use
             'KAPAP': 'psax',
+            'KAAP': 'psax',  # although this view does not exactly match
             'CV': 'a4c'
         }
         if index_file_path is not None:
@@ -136,10 +137,6 @@ class EchoDataset(Dataset):
         self.num_samples = len(self.frames)
         self.labels, cnts = np.unique(self.targets, return_counts=True)
         # Calculate class weights for weighted loss
-        # if self.regression:
-        #     self.class_weights = class_weight.compute_class_weight('balanced', classes=[int(2 * l) for l in self.labels],
-        #                                                            y=[int(2 * t) for t in self.targets])
-        # else:
         self.class_weights = class_weight.compute_class_weight('balanced', classes=self.labels, y=self.targets)
         if len(self.class_weights) <= max(self.labels):  # we have a missing label = not calculate example weights (hax)
             self.example_weights = None
@@ -191,8 +188,8 @@ class EchoDataset(Dataset):
         :param sample: Sample from the file list paths.
         :return: (line regions, parsed program, sample name)
         """
-        if np.random.random() < 0.8:
-           return None, None, None
+        # if np.random.random() < 0.8:
+        #    return None, None, None
         views = self.views
         videos = []
         for view in views:
@@ -247,9 +244,6 @@ class EchoDataset(Dataset):
         if sample not in all_labels:  # ATH! When proper index files used, this should not happen
             return None, None, None
         label = all_labels[sample]
-        # if self.regression:  # normalise labels
-        #     max_label = max(all_labels.values())
-        #     label = label/max_label
         return frames_per_view, label, sample_names
 
     def __len__(self):
