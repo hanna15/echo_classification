@@ -14,7 +14,9 @@ from echo_ph.models import Unet
 from echo_ph.data.segmentation import model_dict, segmentation_labels
 
 """
-This script segments echo videos using pre-trained models from the echo-cv repo: bitbucket.org/rahuldeo/echocv
+A script to segments one ECHO video at a time from out database, using pre-trained models from the echo-cv repo.
+(bitbucket.org/rahuldeo/echocv).
+TODO: Parallelize the code
 """
 
 
@@ -146,8 +148,6 @@ def segment_video(args, video_path):
     for frame in frames_to_predict:  # predict one frame at a time, to save memory
         frame_to_predict = np.expand_dims(frame, 0) # add 1 in front for batch_size 1
         pred_frame = np.argmax(model.predict(sess, frame_to_predict), -1)  # argmax max over last dim
-    #predicted_frames = np.argmax(model.predict(sess, frames_to_predict),
-    #                             -1)  # argmax max over last dim (labels)
         predicted_frames.append(np.squeeze(pred_frame, 0))
     predicted_frames = np.asarray(predicted_frames)
     print('saving video', video_name)
