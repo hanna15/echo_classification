@@ -582,7 +582,7 @@ def main():
               weights=class_weights, binary=binary, use_wandb=use_wandb)
 
 
-def seed_worker():
+def seed_worker(worked_id):
     """
     To encourage reproducibility
     """
