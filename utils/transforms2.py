@@ -15,8 +15,6 @@ from echo_ph.data.segmentation import segmentation_labels, our_view_to_segm_view
 from scipy.spatial import ConvexHull
 import multiprocessing as mp
 FILL_VAL = 0.3
-# FILL_VAL = 0
-
 TORCH_SEED = 0
 torch.manual_seed(TORCH_SEED)  # Fix a seed, to increase reproducibility
 torch.cuda.manual_seed(TORCH_SEED)
@@ -210,7 +208,6 @@ class Normalize():
     def __call__(self, sample):
         sample, p_id = sample
         return sample.float() / self.max_val, p_id
-
 
 
 class SaltPepperNoise():
@@ -457,8 +454,7 @@ class Augment():
                 sample = t(sample)
         return sample
 
-    def _apply_positional_transforms2(self, sample):
-        # TODO adapt this to also work for non-temporal
+    def _apply_positional_transforms_black(self, sample):
         if len(sample.shape) == 4:  # temporal, i.e. video
             l, c, h, w = sample.shape
             temp = np.zeros((l, c, h + 2 * self.pad, w + 2 * self.pad), dtype=np.float32)
@@ -489,7 +485,7 @@ class Augment():
             return sample
 
         # In augment type 4, 10 % of images don't get any augmentation
-        if self.type == 4 and torch.rand(1) < 0.1:
+        if (self.type == 4 or self.type == 6) and torch.rand(1) < 0.1:
             if self.return_pid:
                 return sample, p_id
             return sample
@@ -508,7 +504,19 @@ class Augment():
         elif self.type == 3:
             sample = self._apply_positional_transforms(sample, mask, p=0.4)
         elif self.type == 5:
-            sample = self._apply_positional_transforms2(sample)
+            sample = self._apply_positional_transforms_black(sample)
+        elif self.type == 6:
+            if torch.rand(1) < 0.5:  # 50 % get positional transforms on black background
+                sample = self._apply_positional_transforms_black(sample)
+            else:
+                if torch.rand(1) < 0.75:  # 75 % of 50% get also positional transforms, each one with 60% chance
+                    sample = self._apply_positional_transforms(sample, mask, p=0.6)
+                    pos_tf = True
+                else:  # Even when not doing positional transforms, gray out background for some (25% of) frames
+                    if torch.rand(1) < 0.25:
+                        # Cut off black border around echo & add background noise
+                        sample = self._cut_border(sample, mask)
+                        sample = self._apply_background_noise(sample, mask)
         else:  # for augmentation type 2 and 4, not always apply positional transforms
             pos_tf = False
             if torch.rand(1) < 0.75:  # 75 % get also positional transforms, each one with 60% chance
@@ -558,6 +566,7 @@ def get_transforms(
     subset = 'valid' if valid else 'train'
     view_set = '' if view == 'KAPAP' else f'_{view}'  # Only specify separately if not default
     mask_path = os.path.expanduser(os.path.join('~', '.echo-net', 'masks', subset + view_set))
+    print(mask_path)
     corner_path = os.path.expanduser(os.path.join('~', '.echo-net', 'mask_corners', subset + view_set))
     max_val = 255.
     if segm_mask_only:
@@ -647,7 +656,7 @@ def _gen_mask(index_file_path, resize, orig_scale_fac, p_id):
 
 
 def gen_mask_corners(mask_path, corners_fn, orig_scale_fac, index_file_path, fold=0, view='KAPAP'):
-    # Assemble precomputation paths
+    # Assemble pre-computation paths
     mask_fn = os.path.join(mask_path, f'{-1}_{int(100 * float(orig_scale_fac))}_percent_fold{fold}.pt')
 
     # Load masks
@@ -714,3 +723,45 @@ def get_arc_points_from_mask(mask):
 
     corners = np.array([top, right, bot, left])
     return corners
+
+
+'''
+Simplified augment for type-4 only => Just to better understand the flow / pipeline.
+def __call__(self, sample):
+    # Get sample and corresponding mask
+    sample, p_id = sample
+    # 10 % of images don't get any augmentation
+    if torch.rand(1) < 0.1:
+        if self.return_pid:
+            return sample, p_id
+        return sample
+
+    mask = self.masks[p_id].unsqueeze(0)
+    mask = mask.to(sample.device)         # Try moving mask to gpu if available
+
+    # Apply intensity transformations, each with a probability of 50 % 
+    for t in self.intensity_transformations:
+        if torch.rand(1) < 0.5:
+            sample = t(sample)
+
+    # Apply positional transformations
+    if torch.rand(1) < 0.75:  # 75 % get positional transforms (each one with 60% chance) with grey background
+        sample = self._apply_positional_transforms(sample, mask, p=0.6)
+        if torch.rand(1) < 0.5: # retrieves original shape for 50 % of frames with positional transforms & grey backgt
+            sample = self._apply_mask(sample, mask)
+    else:  # 25% get no positional transforms, but only gray out background.
+        if torch.rand(1) < 0.25:
+            # Cut off black border around echo & add background noise
+            sample = self._cut_border(sample, mask)
+            sample = self._apply_background_noise(sample, mask)
+
+    # Add speckle noise to background (always do this - only has effects when background is still gray)
+    sample = self._add_background_speckle_noise(sample)
+    # Add random noise
+    rn = RandomNoise()
+    sample = rn(sample)
+
+    if self.return_pid:
+        return sample, p_id
+    return sample
+'''
