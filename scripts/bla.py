@@ -27,8 +27,9 @@ parser.add_argument('--model_dir_paths', nargs='+',
                     help='set to path of a model state dict, to evaluate on. If None, use resnet18 pretrained on '
                          'Imagenet only.')
 parser.add_argument('--views',  nargs='+', default=['KAPAP', 'CV'])
-parser.add_argument('--size', default=224, type=int, help='Size of images (frames) to resize to')
+parser.add_argument('--weights',  nargs='+', default=[0.7, 0.3])
 # Arguments that must be the same for all models
+parser.add_argument('--size', default=224, type=int, help='Size of images (frames) to resize to')
 parser.add_argument('--label_type', default='2class_drop_ambiguous',
                     choices=['2class', '2class_drop_ambiguous', '3class'])
 parser.add_argument('--cache_dir', default='~/.heart_echo')
@@ -89,6 +90,7 @@ def foo(data_loader, model, device, temporal=False, view='KAPAP'):
 
 def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    res_dir = 'results_averaged' + str([view for view in args.views])
     for fold in range(args.k):
         num_classes = 2 if args.label_type.startswith('2') else 3
         total_outs = []
@@ -115,9 +117,13 @@ def main():
             total_samples.append(samples)
             vid_ids = [s.split('_')[0] for s in samples]
             total_vid_ids.append(vid_ids)
-    print(set(total_vid_ids[0]) == set(total_vid_ids[1]))
-    print(set(total_samples[0]) == set(total_samples[1]))
-    print(total_samples[0] == total_samples[1])
+        outs = np.average(np.asarray(total_outs), axis=0, weights=args.weights)
+        np.save(os.path.join(res_dir, 'fold' + str(fold) + '_val_preds.npy'), outs)
+        np.save(os.path.join(res_dir, 'fold' + str(fold) + 'val_targets.npy'), total_targets[0])
+        np.save(os.path.join(res_dir, 'fold' + str(fold) + 'val_samples.npy'), total_samples[0])
+        print(set(total_vid_ids[0]) == set(total_vid_ids[1]))
+        print(set(total_samples[0]) == set(total_samples[1]))
+        print(total_samples[0] == total_samples[1])
 
 
 if __name__ == '__main__':
