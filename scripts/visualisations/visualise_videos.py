@@ -13,7 +13,7 @@ Script to visualise frames of echo videos
 parser = ArgumentParser(
     description='Segment echo videos',
     formatter_class=ArgumentDefaultsHelpFormatter)
-parser.add_argument('--video_path', default='/Users/hragnarsd/.heart_echo/0.5_backup/96KAPAP.npy',
+parser.add_argument('--video_path', default='/Users/hragnarsd/.heart_echo/0.25/96KAPAP.npy',
                     help='Path to the video to visualise')
 parser.add_argument('--sampling_period', type=int, default=2,
                     help='Input integer i, to visualise every i-th frame')
