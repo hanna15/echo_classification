@@ -80,18 +80,23 @@ def get_metrics(all_runs, out_dir, subset='val', get_clf_report=False, get_confu
     avg_softm_probs = []
     # start with first fold, ignore .DS_store and other non-dir files
     all_runs_all_folds = np.asarray([sorted(os.listdir(run)) for run in all_runs])
-    for i in range(args.no_folds):
-        fold_i_runs = all_runs_all_folds[:, i]
+    for fold in range(args.no_folds):
+        fold_i_runs = all_runs_all_folds[:, fold]
         fold_probs = []
+        fold_samples = []
         for run_no, fold_i_run_name in enumerate(fold_i_runs):
+            print('run no', run_no)
             fold_i_run = os.path.join(all_runs[run_no], fold_i_run_name)
             model_fold_preds, model_fold_probs, model_fold_targets, model_fold_samples = read_results(fold_i_run, subset)
             fold_probs.append(model_fold_probs)
+            fold_samples.append(model_fold_samples)
+            print(len(model_fold_samples))
+        print(fold_samples[0] == fold_samples[1])
         fold_probs = np.average(np.asarray(fold_probs), axis=0, weights=args.weights)
         fold_targets = model_fold_targets   # just the last one
         fold_samples = model_fold_samples  # just the last one
         fold_preds = np.argmax(fold_probs, axis=-1)  # Works for multi-class classification => Get class with highest avg. prob
-        fold_probs = fold_probs[:, 1]  # To get prob for class-1, in binary classification
+        fold_probs = None if args.multi_class else fold_probs[:, 1]  # To get prob for class-1, in binary classification
         results, vid_targ, avg_prob, vid_pred, video_ids = get_metrics_for_fold(fold_targets, fold_preds, fold_probs,
                                                                                 fold_samples)
         for metric, val in results.items():
