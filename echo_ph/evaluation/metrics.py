@@ -270,7 +270,7 @@ class Metrics():
         targets_per_video = []
         preds_per_video = []
         video_confidance = []
-        raw_outs_per_video = []
+        raw_outs_per_video = None if self.model_outputs is None else []
         mean_probs_per_video = [] if self.binary else None
         for res in res_per_video.values():
             # Pick the most frequent label for the video (works with binary or multi-labels).
@@ -279,7 +279,8 @@ class Metrics():
             video_confidance.append(ratio_corr_pred)
             preds_per_video.append(video_pred)
             targets_per_video.append(res['target'])
-            raw_outs_per_video.append(np.average(res['out'], axis=0))
+            if self.model_outputs is not None:
+                raw_outs_per_video.append(np.average(res['out'], axis=0))
             if self.binary:
                 mean_probs_per_video.append(np.mean(res['prob']))
         self.video_targets = targets_per_video
