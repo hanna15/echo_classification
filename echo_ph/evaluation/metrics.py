@@ -35,7 +35,7 @@ def get_metric_dict(targets, preds, probs=None, binary=True, subset='', prefix='
         if prefix.startswith('Video'):
             metrics = {prefix + 'F1 (micro)': f1_score(targets, preds, average='micro'),
                        prefix + 'bACC': b_acc,
-                       prefix + ' CI':  np.mean(conf)}
+                       prefix + 'CI':  np.mean(conf)}
             if binary:
                 metrics.update(
                     {prefix + 'F1, pos': f1_score(targets, preds, average='binary'),
