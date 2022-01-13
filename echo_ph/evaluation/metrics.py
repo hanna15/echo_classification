@@ -239,18 +239,19 @@ class Metrics():
             target = self.targets[i]
             pred = self.preds[i]
             if self.model_outputs is None:
-                res_per_video[vid_id]['out'] = None
+                out = None
             else:
                 out = self.model_outputs[i]
             if vid_id in res_per_video:
                 res_per_video[vid_id]['pred'].append(pred)
-                if res_per_video[vid_id]['out'] is not None:
+                if out is not None:
                     res_per_video[vid_id]['out'].append(out)
                 if self.binary:
                     res_per_video[vid_id]['prob'].append(self.sm_probs[i])
             else:
                 # (target, list of preds, list of raw outs)
-                res_per_video[vid_id] = {'target': target, 'pred': [pred], 'out': [out]}
+                out_lst = [out] if out is not None else None
+                res_per_video[vid_id] = {'target': target, 'pred': [pred], 'out': out_lst}
                 if self.binary:
                     res_per_video[vid_id].update({'prob': [self.sm_probs[i]]})  # update dict with sm probs
         return res_per_video
