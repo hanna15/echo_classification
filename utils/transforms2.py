@@ -28,6 +28,13 @@ torch.backends.cudnn.enabled = False
 from PIL import Image, ImageChops
 
 
+def get_mask_fn(mask_dir, size, img_scale, label_type, fold):
+    fn = os.path.join(mask_dir,  # view is already defined in the mask path!
+                 f'{size}_{int(100 * float(img_scale))}_percent_'
+                 f'label{label_type}_fold{fold}.pt')
+    return fn
+
+
 class Trim():
 
     def __init__(self, border=0):
@@ -52,7 +59,8 @@ class CropToCorners():
     """
 
     def _get_masks(self):
-        mask_fn = os.path.join(self.mask_path, f'{-1}_{int(100 * float(self.orig_img_scale))}_percent_fold{self.fold}.pt')
+        # mask_fn = os.path.join(self.mask_path, f'{-1}_{int(100 * float(self.orig_img_scale))}_percent_fold{self.fold}.pt')
+        mask_fn = get_mask_fn(self.mask_path, -1, self.orig_img_scale, self.label_type, self.fold)
         if not os.path.exists(mask_fn):
             gen_masks(mask_fn, -1, self.orig_img_scale, self.index_file_path, view=self.view)
         return torch.load(mask_fn)
@@ -61,16 +69,19 @@ class CropToCorners():
         corners_fn = os.path.join(self.corner_path, f'{int(100 * float(self.orig_img_scale))}_percent_fold{self.fold}.pt')
         if not os.path.exists(corners_fn):
             gen_mask_corners(self.mask_path, corners_fn, self.orig_img_scale, self.index_file_path,
-                             fold=self.fold, view=self.view)
+                             fold=self.fold, view=self.view, label_type=self.label_type)
         return torch.load(corners_fn)
 
-    def __init__(self, mask_path, corner_path, index_file_path, orig_img_scale=0.25, fold=0, view='KAPAP'):
+    def __init__(self, mask_path, corner_path, index_file_path, orig_img_scale=0.25, fold=0, view='KAPAP',
+                 label_type='2class'):
         self.orig_img_scale = orig_img_scale
         self.index_file_path = index_file_path
         self.fold = fold
         self.view = view
+        self.label_type = label_type
         self.mask_path = mask_path
         self.corner_path = corner_path
+
 
         # Generate pre-computation libraries for masks and corners
         Path(self.mask_path).mkdir(parents=True, exist_ok=True)
@@ -405,9 +416,10 @@ class Augment():
         print('in _get_masks')
         #mask_fn = os.path.join(self.mask_path,
         #                       f'{self.size}_{int(100 * float(self.orig_img_scale))}_percent_fold{fold}.pt')
-        mask_fn = os.path.join(self.mask_path,
-                               f'{self.size}_{int(100 * float(self.orig_img_scale))}_percent_view{self.view}_'
-                               f'label{self.label_type}_fold{fold}.pt')
+        # mask_fn = os.path.join(self.mask_path,  # view is already defined in the mask path!
+        #                        f'{self.size}_{int(100 * float(self.orig_img_scale))}_percent_'
+        #                        f'label{self.label_type}_fold{fold}.pt')
+        mask_fn = get_mask_fn(self.mask_path, self.size, self.orig_img_scale, self.label_type, fold)
         print(mask_fn)
         if not os.path.exists(mask_fn):
             # utilities.generate_masks(self.size, self.orig_img_scale)
@@ -583,7 +595,7 @@ def get_transforms(
             ConvertToTensor(),
             Normalize(max_val=max_val),
             CropToCorners(mask_path, corner_path, index_file_path, orig_img_scale=dataset_orig_img_scale, fold=fold,
-                          view=view) if crop_to_corner and not segm_mask_only else Identity(),
+                          view=view, label_type=label_type) if crop_to_corner and not segm_mask_only else Identity(),
             Trim() if crop_to_corner and segm_mask_only else Identity(),
             Resize(resize, return_pid=(with_pid or augment)),
             Augment(mask_path, index_file_path, orig_img_scale=dataset_orig_img_scale, size=resize, return_pid=with_pid,
@@ -661,10 +673,10 @@ def _gen_mask(index_file_path, resize, orig_scale_fac, p_id):
     return p_id, hull_mask
 
 
-def gen_mask_corners(mask_path, corners_fn, orig_scale_fac, index_file_path, fold=0, view='KAPAP'):
+def gen_mask_corners(mask_path, corners_fn, orig_scale_fac, index_file_path, fold=0, view='KAPAP', label_type='2class'):
     # Assemble pre-computation paths
-    mask_fn = os.path.join(mask_path, f'{-1}_{int(100 * float(orig_scale_fac))}_percent_fold{fold}.pt')
-
+    # mask_fn = os.path.join(mask_path, f'{-1}_{int(100 * float(orig_scale_fac))}_percent_fold{fold}.pt')
+    mask_fn = get_mask_fn(mask_path, -1, orig_scale_fac, label_type, fold)
     # Load masks
     if not os.path.exists(mask_fn):
         gen_masks(mask_path, -1, orig_scale_fac, index_file_path, view=view)
