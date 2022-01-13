@@ -238,10 +238,14 @@ class Metrics():
             vid_id = self.samples[i].split('_')[0]
             target = self.targets[i]
             pred = self.preds[i]
-            out = self.model_outputs[i]
+            if self.model_outputs is None:
+                res_per_video[vid_id]['out'] = None
+            else:
+                out = self.model_outputs[i]
             if vid_id in res_per_video:
                 res_per_video[vid_id]['pred'].append(pred)
-                res_per_video[vid_id]['out'].append(out)
+                if res_per_video[vid_id]['out'] is not None:
+                    res_per_video[vid_id]['out'].append(out)
                 if self.binary:
                     res_per_video[vid_id]['prob'].append(self.sm_probs[i])
             else:
