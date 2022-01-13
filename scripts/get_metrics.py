@@ -5,7 +5,7 @@ import torch
 from sklearn.metrics import roc_curve
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from matplotlib import pyplot as plt
-from echo_ph.evaluation.metrics import Metrics, get_save_classification_report, get_save_confusion_matrix
+from echo_ph.evaluation.metrics import Metrics, get_save_classification_report, get_save_confusion_matrix, read_results
 from statistics import multimode
 
 parser = ArgumentParser(
@@ -47,29 +47,6 @@ def get_metrics_for_fold(fold_targets, fold_preds, fold_probs, fold_samples):
     return all_metrics, vid_targ, vid_avg_prob, vid_pred, vid_ids
 
 
-def read_results(res_dir, subset='val'):
-    """
-    Read (get) results for model (preds, targets, samples) from numpy files
-    :param res_dir: directory of model results
-    :param subset: train or val
-    :return: list of model predictions, list of targets, list of sample names
-    """
-    outs = np.load(os.path.join(res_dir, f'{subset}_preds.npy'))
-    targets = np.load(os.path.join(res_dir, f'{subset}_targets.npy'))
-    samples = np.load(os.path.join(res_dir, f'{subset}_samples.npy'))
-    sm = torch.nn.Softmax(dim=-1)
-    if len(outs) == 0:
-        return None, None, None, None
-    if isinstance(outs[0], (list, np.ndarray)):
-        preds = np.argmax(outs, axis=1)
-        soft_m = np.asarray(sm(torch.tensor(outs)))  # get soft-maxed prob corresponding to class 1
-        probs = soft_m[:, 1]
-    else:
-        preds = outs
-        probs = None
-    return preds, probs, targets, samples
-
-
 def get_metrics_for_run(res_base_dir, run_name, out_dir, col, subset='val', get_clf_report=False, get_confusion=False,
                         first=False, out_name=None):
     """
@@ -100,7 +77,7 @@ def get_metrics_for_run(res_base_dir, run_name, out_dir, col, subset='val', get_
     for fold_dir in fold_paths:
         epoch = int(fold_dir.rsplit('_e', 1)[-1])
         epochs.append(epoch)
-        fold_preds, fold_probs, fold_targets, fold_samples = read_results(fold_dir, subset)
+        fold_preds, fold_probs, fold_targets, fold_samples, _ = read_results(fold_dir, subset)
         if fold_preds is None:
             print(f'failed for model {os.path.basename(fold_dir)}')
             continue

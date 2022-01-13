@@ -8,8 +8,9 @@ import csv
 from statistics import multimode
 
 
-# ==== Helper functions related to Metrics
-def get_metric_dict(targets, preds, probs=None, binary=True, subset='', prefix='', tb=True, regression=False):
+# ==== Functions related to Metrics or Results
+def get_metric_dict(targets, preds, probs=None, binary=True, subset='', prefix='', tb=True, regression=False,
+                    conf=None):
     """
     Get dictionary of metrics (f1, accuracy, balanced accuracy, roc_auc) and associated values
     :param targets: Targets / labels
@@ -20,6 +21,7 @@ def get_metric_dict(targets, preds, probs=None, binary=True, subset='', prefix='
     :param prefix: If any prefix, in front of all metric-keys in directory (e.g. video-)
     :param tb: Set to true, if calculating metrics for tensorboard during training (has different metric keys)
     :param regression: Set to true, if add regression metrics
+    :param conf: Video confidence (ratio of samples agreeing on correct label for a video)
     :return: Metrics directory with f1, accuracy, balanced accuracy (and roc-auc score, if probs is not None)
     """
     b_acc = balanced_accuracy_score(targets, preds)
@@ -32,7 +34,8 @@ def get_metric_dict(targets, preds, probs=None, binary=True, subset='', prefix='
     else:  # Metric keys for eval csv files
         if prefix.startswith('Video'):
             metrics = {prefix + 'F1 (micro)': f1_score(targets, preds, average='micro'),
-                       prefix + 'bACC': b_acc}
+                       prefix + 'bACC': b_acc,
+                       prefix + ' CI':  np.mean(conf)}
             if binary:
                 metrics.update(
                     {prefix + 'F1, pos': f1_score(targets, preds, average='binary'),
@@ -41,7 +44,7 @@ def get_metric_dict(targets, preds, probs=None, binary=True, subset='', prefix='
         else:  # For the Frame-wise, only report balanced accuracy.
             metrics = {prefix + 'bACC': b_acc}
 
-    if probs is not None:  # Also get ROC_AUC score on probabilities, for binary classification
+    if probs is not None and binary:  # Also get ROC_AUC score on probabilities, for binary classification
         roc_auc = roc_auc_score(targets, probs)
         if tb:
             metrics.update({prefix + 'roc_auc' + '/' + subset: roc_auc})
@@ -50,6 +53,29 @@ def get_metric_dict(targets, preds, probs=None, binary=True, subset='', prefix='
     if regression:
         metrics.update({prefix + 'mse' + '/' + subset: mean_squared_error(targets, preds)})
     return metrics
+
+
+def read_results(res_dir, subset='val'):
+    """
+    Read (get) results for model (preds, targets, samples) from numpy files
+    :param res_dir: directory of model results
+    :param subset: train or val
+    :return: list of model predictions, list of targets, list of sample names
+    """
+    outs = np.load(os.path.join(res_dir, f'{subset}_preds.npy'))
+    targets = np.load(os.path.join(res_dir, f'{subset}_targets.npy'))
+    samples = np.load(os.path.join(res_dir, f'{subset}_samples.npy'))
+    sm = torch.nn.Softmax(dim=-1)
+    if len(outs) == 0:
+        return None, None, None, None
+    if isinstance(outs[0], (list, np.ndarray)):
+        preds = np.argmax(outs, axis=1)
+        soft_m = np.asarray(sm(torch.tensor(outs)))  # get soft-maxed prob corresponding to class 1
+        probs = soft_m[:, 1]
+    else:
+        preds = outs
+        probs = None
+    return preds, probs, targets, samples, outs
 
 
 def get_save_classification_report(targets, preds, file_name, metric_res_dir='results', epochs=None):
@@ -128,10 +154,11 @@ class Metrics():
             self.sm_probs = None
         self.tb = tb
 
-        # Video-wise lists that will get instantiated when and if needed
+        # Video-wise lists that will get instantiated when and if needed (or if already provided, then use that)
         self.video_targets = None
         self.video_preds = None
         self.mean_probs_per_video = None
+        self.video_outs = None
         self.video_confidence = None
         self.video_ids = None
 
@@ -181,17 +208,22 @@ class Metrics():
             self._set_subject_res_lists()
         prefix = 'video-' if self.tb else 'Video '
         return get_metric_dict(self.video_targets, self.video_preds, probs=self.mean_probs_per_video, binary=self.binary,
-                               subset=subset, prefix=prefix, tb=self.tb, regression=self.regression)
+                               subset=subset, prefix=prefix, tb=self.tb, regression=self.regression,
+                               conf=self.video_confidence)
 
-    def get_subject_lists(self):
+    def get_subject_lists(self, raw_outputs=False):
         """
         Get prediction per subject / video (majority vote of the sample-wise predictions), and if binary classification,
         also average soft-maxed prediction of the positive class per subject / video.
-        :return:
+         :param raw_outputs: Set to true, to also return raw video/subject outputs (not often desired)
+        :return: (targets, preds, mean_prob, confidence, ids, optionally output) => all per-video
         """
         if self.video_targets is None:
             self._set_subject_res_lists()
-        return self.video_targets, self.video_preds, self.mean_probs_per_video, self.video_confidence, self.video_ids
+        ret = (self.video_targets, self.video_preds, self.mean_probs_per_video, self.video_confidence, self.video_ids)
+        if raw_outputs:
+            ret = ret + (self.video_outs,)
+        return ret
 
     def _get_video_dict(self):
         """
@@ -206,12 +238,15 @@ class Metrics():
             vid_id = self.samples[i].split('_')[0]
             target = self.targets[i]
             pred = self.preds[i]
+            out = self.model_outputs[i]
             if vid_id in res_per_video:
                 res_per_video[vid_id]['pred'].append(pred)
+                res_per_video[vid_id]['out'].append(out)
                 if self.binary:
                     res_per_video[vid_id]['prob'].append(self.sm_probs[i])
             else:
-                res_per_video[vid_id] = {'target': target, 'pred': [pred]}  # (target, list of preds)
+                # (target, list of preds, list of raw outs)
+                res_per_video[vid_id] = {'target': target, 'pred': [pred], 'out': [out]}
                 if self.binary:
                     res_per_video[vid_id].update({'prob': [self.sm_probs[i]]})  # update dict with sm probs
         return res_per_video
@@ -230,6 +265,7 @@ class Metrics():
         targets_per_video = []
         preds_per_video = []
         video_confidance = []
+        raw_outs_per_video = []
         mean_probs_per_video = [] if self.binary else None
         for res in res_per_video.values():
             # Pick the most frequent label for the video (works with binary or multi-labels).
@@ -238,12 +274,15 @@ class Metrics():
             video_confidance.append(ratio_corr_pred)
             preds_per_video.append(video_pred)
             targets_per_video.append(res['target'])
+            raw_outs_per_video.append(np.average(res['out'], axis=0))
             if self.binary:
                 mean_probs_per_video.append(np.mean(res['prob']))
         self.video_targets = targets_per_video
         self.video_preds = preds_per_video
         self.mean_probs_per_video = mean_probs_per_video
+        self.video_outs = raw_outs_per_video
         self.video_confidence = video_confidance
         self.video_ids = list(res_per_video.keys())
+
 
 
