@@ -368,7 +368,7 @@ class Augment():
     """
 
     def __init__(self, mask_path, index_file_path, orig_img_scale=0.5, size=-1, return_pid=False, fold=0, valid=False,
-                 view='KAPAP', aug_type=2):
+                 view='KAPAP', aug_type=2, label_type='2class'):
         self.return_pid = return_pid
         self.mask_path = mask_path
         Path(self.mask_path).mkdir(parents=True, exist_ok=True)
@@ -379,6 +379,7 @@ class Augment():
         self.size = size
         self.view = view
         self.type = aug_type
+        self.label_type = label_type
         self.masks = self._get_masks(fold)
 
         # self.pad = 12
@@ -402,8 +403,11 @@ class Augment():
 
     def _get_masks(self, fold):
         print('in _get_masks')
+        #mask_fn = os.path.join(self.mask_path,
+        #                       f'{self.size}_{int(100 * float(self.orig_img_scale))}_percent_fold{fold}.pt')
         mask_fn = os.path.join(self.mask_path,
-                               f'{self.size}_{int(100 * float(self.orig_img_scale))}_percent_fold{fold}.pt')
+                               f'{self.size}_{int(100 * float(self.orig_img_scale))}_percent_view{self.view}_'
+                               f'label{self.label_type}_fold{fold}.pt')
         print(mask_fn)
         if not os.path.exists(mask_fn):
             # utilities.generate_masks(self.size, self.orig_img_scale)
@@ -558,7 +562,8 @@ def get_transforms(
         with_pid=False,
         crop_to_corner=False,
         dataset_orig_img_scale=0.25,
-        segm_mask_only=False
+        segm_mask_only=False,
+        label_type='2class'
 ):
     """
     Compose a set of prespecified transformation using the torchvision transform compose class
@@ -582,7 +587,8 @@ def get_transforms(
             Trim() if crop_to_corner and segm_mask_only else Identity(),
             Resize(resize, return_pid=(with_pid or augment)),
             Augment(mask_path, index_file_path, orig_img_scale=dataset_orig_img_scale, size=resize, return_pid=with_pid,
-                    fold=fold, valid=valid, view=view, aug_type=augment) if augment != 0 and not segm_mask_only
+                    fold=fold, valid=valid, view=view, aug_type=augment, label_type=label_type) if augment != 0 and
+                                                                                                   not segm_mask_only
             else Identity(),
             # ConvertToTensor(),  # TODO: REMOVE
             AugmentSegMasks() if augment != 0 and segm_mask_only else Identity(),

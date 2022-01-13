@@ -474,7 +474,8 @@ def main():
     if args.augment and not args.load_model:  # All augmentations
         train_transforms = get_transforms(train_index_file_path, dataset_orig_img_scale=args.scaling_factor, resize=size,
                                           augment=args.aug_type, fold=args.fold, valid=False, view=args.view,
-                                          crop_to_corner=args.crop, segm_mask_only=args.segm_masks)
+                                          crop_to_corner=args.crop, segm_mask_only=args.segm_masks,
+                                          label_type=args.label_type)
     else:
         train_transforms = get_transforms(train_index_file_path, dataset_orig_img_scale=args.scaling_factor, resize=size,
                                           augment=0, fold=args.fold, valid=False, view=args.view,
