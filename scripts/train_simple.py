@@ -64,7 +64,7 @@ parser.add_argument('--run_id', type=str, default='',
                     help='Set a unique_run_id, to identify run if arguments alone are not enough to identify (e.g. when'
                          'running on same settings multiple times). Id will be pre-pended to the run name derived '
                          'from arguments. Default is empty string, i.e. only identify run with arguments.')
-parser.add_argument('--view', type=str, default='KAPAP', choices=['KAPAP', 'CV', 'KAAP'],
+parser.add_argument('--view', type=str, default='KAPAP', choices=['KAPAP', 'CV', 'KAAP', 'LA', 'KAKL'],
                     help='What view to use')
 # Data parameters
 parser.add_argument('--scaling_factor', default=0.25, help='How much to scale (down) the videos, as a ratio of original '
@@ -95,7 +95,7 @@ parser.add_argument('--load_model', action='store_true',
                          'function get_run_name(), and load the corresponding model')
 parser.add_argument('--model', default='resnet', choices=['resnet', 'res_simple', 'conv', 'simple_conv',
                                                           'r2plus1d_18', 'mc3_18', 'r3d_18', 'r3d_50'],
-                    help='What model architecture to use.')
+                    help='What model architecture to use. Note: r3d_50 is actually slow_fast (!)')
 parser.add_argument('--self_attention', action='store_true', help='If use self-attention (non-local block)')
 parser.add_argument('--map_attention', action='store_true', help='If use map-based attention')
 parser.add_argument('--dropout', type=float, default=0.5, help='Dropout value for those model who use dropout')
@@ -517,7 +517,7 @@ def main():
             else:
                 model = get_resnet3d_18(num_classes=num_classes, pretrained=args.pretrained,
                                         model_type=args.model).to(device)
-        else:
+        else:  # This is really slow-fast network (TODO: refactor naming)
             model = get_resnet3d_50(num_classes=num_classes, pretrained=args.pretrained).to(device)
     else:
         if args.model == 'resnet':
