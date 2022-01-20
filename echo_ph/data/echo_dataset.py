@@ -12,6 +12,10 @@ from echo_ph.data.segmentation import SegmentationAnalyser
 import matplotlib.pyplot as plt
 import cv2
 
+# Try to add this also here, to encourage same 'random frames' to be selected per video
+RAND_SEED = 0
+np.random.seed(RAND_SEED)
+
 
 def load_dynamic_video(filename: str) -> np.ndarray:
     """Loads a video from a file.
@@ -148,19 +152,24 @@ class EchoDataset(Dataset):
             print(label, ':', cnt)
 
     def get_frame_nrs(self, total_len):
-        if self.all_frames:
+        """
+        Get the indices of the frames to use from a given video
+        :param total_len: Number of frames in the video
+        :return: Indexes of the selected frames.
+        """
+        if self.all_frames:  # Select 'all' frames of the video or all frames up to given max_frame
             if self.max_frame is None:
                 max_frame = total_len
             else:
                 max_frame = min(total_len, self.max_frame)  # Entire video, or up to max frame
-            if self.temporal:
+            if self.temporal:  # In the case of temporal, must also conform to clip_len and sampling period
                 # get starting points, s.t. start + (clip_len * sp) covers all video
                 max_frame = max_frame - (self.clip_len * self.period)
                 return np.asarray(range(0, max_frame, self.clip_len * self.period))
-            # Else, if get all frames, but NOT temporal - just return sequence of corr len
+            # Else, if get all frames for spatial approach - just return sequence of corr len
             return np.asarray(range(0, max_frame))
-        # Get random frames
-        max_frame = total_len - (self.clip_len * self.period)
+        # Else => Select 'self.num_rand_frames' many of random frames
+        max_frame = total_len - (self.clip_len * self.period)  # In case of spatial, this is just 'total_len'
         frame_nrs = np.random.randint(0, max_frame, self.num_rand_frames)
         return frame_nrs
 
@@ -188,14 +197,14 @@ class EchoDataset(Dataset):
         :param sample: Sample from the file list paths.
         :return: (line regions, parsed program, sample name)
         """
-        # if np.random.random() < 0.8:
-        #    return None, None, None
+        # if np.random.random() < 0.9:
+        #     return None, None, None
         views = self.views
         videos = []
         for view in views:
             if self.dynamic:
                 curr_video_path = os.path.join('/Users/hragnarsd/Documents/masters/dynamic/a4c-video-dir/Videos',
-                                               sample + '.avi')  # TODO: Don't have it hard-coed
+                                               sample + '.avi')  # TODO: Don't have it hard-coded
             elif self.cache_dir is None:  # Use raw videos, as no cached processed videos provided
                 curr_video_path = os.path.join(self.videos_dir, str(sample) + view + '.mp4')  # TODO: Generalise
             else:  # Use cached videos
