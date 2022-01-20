@@ -120,6 +120,7 @@ class EchoDataset(Dataset):
         self.view_to_segmodel_view = {  # When training on given view, what segmentation pretrained model view to use
             'KAPAP': 'psax',
             'KAAP': 'psax',  # although this view does not exactly match
+            'KAKL': 'psax', # although this view does not exactly match
             'CV': 'a4c'
         }
         if index_file_path is not None:
