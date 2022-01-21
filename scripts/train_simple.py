@@ -237,6 +237,7 @@ def run_batch(batch, model, criterion=None, binary=False):
     outputs = model(input)
     if args.model == 'saliency_r3d_18':
         outputs, _ = outputs  # latter output is last conv layer -> just need it when evaluate
+        attention = None
     elif isinstance(outputs, tuple):
         attention = outputs[1]  # The later value is the attention (for visualisation)
         outputs = outputs[0]  # The prev value is the actual output for predictions
