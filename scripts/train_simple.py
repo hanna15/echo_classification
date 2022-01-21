@@ -11,7 +11,7 @@ import wandb
 from echo_ph.data.echo_dataset import EchoDataset
 from echo_ph.models.conv_nets import ConvNet, SimpleConvNet
 from echo_ph.models.resnets import resnet_simpler, get_resnet18
-from echo_ph.models.resnet_3d import get_resnet3d_18, get_resnet3d_50, Res3DAttention
+from echo_ph.models.resnet_3d import get_resnet3d_18, get_resnet3d_50, Res3DAttention, Res3DSaliency
 from echo_ph.data.ph_labels import long_label_type_to_short
 from echo_ph.evaluation.metrics import Metrics
 from utils.transforms2 import get_transforms
@@ -94,7 +94,8 @@ parser.add_argument('--load_model', action='store_true',
                          'If args.model_name is set, load model from that path. Otherwise, get model name acc. to'
                          'function get_run_name(), and load the corresponding model')
 parser.add_argument('--model', default='resnet', choices=['resnet', 'res_simple', 'conv', 'simple_conv',
-                                                          'r2plus1d_18', 'mc3_18', 'r3d_18', 'r3d_50'],
+                                                          'r2plus1d_18', 'mc3_18', 'r3d_18', 'r3d_50',
+                                                          'saliency_r3d_18'],
                     help='What model architecture to use. Note: r3d_50 is actually slow_fast (!)')
 parser.add_argument('--self_attention', action='store_true', help='If use self-attention (non-local block)')
 parser.add_argument('--map_attention', action='store_true', help='If use map-based attention')
@@ -234,7 +235,9 @@ def run_batch(batch, model, criterion=None, binary=False):
     targets = batch["label"].to(dev)
     sample_names = batch["sample_name"]
     outputs = model(input)
-    if isinstance(outputs, tuple):
+    if args.model == 'saliency_r3d_18':
+        outputs, _ = outputs  # latter output is last conv layer -> just need it when evaluate
+    elif isinstance(outputs, tuple):
         attention = outputs[1]  # The later value is the attention (for visualisation)
         outputs = outputs[0]  # The prev value is the actual output for predictions
     else:
@@ -509,14 +512,16 @@ def main():
     # Model & Optimizers
     num_classes = len(train_dataset.labels)
     if args.temporal:
-        if args.model.endswith('18'):
-            if args.self_attention or args.map_attention:
-                att_type = 'self' if args.self_attention else 'map'
-                model = Res3DAttention(num_classes=num_classes, ch=1, w=size, h=size, t=args.clip_len,
-                                       att_type=att_type, pretrained=args.pretrained).to(device)
-            else:
-                model = get_resnet3d_18(num_classes=num_classes, pretrained=args.pretrained,
-                                        model_type=args.model).to(device)
+        if args.model == 'saliency_r3d_18':
+            model = Res3DSaliency(num_classes=num_classes, pretrained=args.pretrained).to(device)
+        elif args.model.endswith('18'):
+                if args.self_attention or args.map_attention:
+                    att_type = 'self' if args.self_attention else 'map'
+                    model = Res3DAttention(num_classes=num_classes, ch=1, w=size, h=size, t=args.clip_len,
+                                           att_type=att_type, pretrained=args.pretrained).to(device)
+                else:
+                    model = get_resnet3d_18(num_classes=num_classes, pretrained=args.pretrained,
+                                            model_type=args.model).to(device)
         else:  # This is really slow-fast network (TODO: refactor naming)
             model = get_resnet3d_50(num_classes=num_classes, pretrained=args.pretrained).to(device)
     else:

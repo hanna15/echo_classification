@@ -41,6 +41,12 @@ def get_resnet3d_18(num_classes=2, model_type='r2plus1d_18', pretrained=True):
     return model
 
 
+   #layerout = h.detach().cpu()
+   #h = self.globalpool(h)
+   #h = h.view(h.shape[0], -1)
+   #h = self.classifier(h)
+   #return h, layerout
+
 # class DCNN3D_ConvLSTM(nn.Module):
 #     def __init__(self):
 #         super(DCNN3D_ConvLSTM, self).__init__()
@@ -81,3 +87,26 @@ class Res3DAttention(nn.Module):
         x = x.reshape((batch_size, ch, clip_len, w, h))  # reshape back to 'normal'
         x = self.base_model(x)  # Input: A tensor of size B, T, C, H, W
         return x, att
+
+
+class Res3DSaliency(nn.Module):
+    def __init__(self, num_classes=2, model_type='r2plus1d_18', pretrained=True):
+        super(Res3DSaliency, self).__init__()
+        model = models.video.__dict__[model_type](pretrained=pretrained)
+        in_channels = 1
+        model.stem[0] = torch.nn.Conv3d(in_channels, model.stem[0].out_channels, kernel_size=(1, 7, 7),
+                                        stride=(1, 2, 2),
+                                        padding=(0, 3, 3), bias=False)
+        model.fc = torch.nn.Linear(model.fc.in_features, num_classes)
+        # model.fc = torch.nn.Linear( 512 * 2 * 14 * 14, num_classes)
+        self.model_base = nn.Sequential(*[model.stem, model.layer1, model.layer2, model.layer3, model.layer4])
+        self.avgpool = model.avgpool
+        self.fc = model.fc
+        # self.model = model
+
+    def forward(self, x):
+        last_conv_out = self.model_base(x)
+        avg_out = self.avgpool(last_conv_out)
+        avg_out = avg_out.view(avg_out.size(0), -1)
+        pred = self.fc(avg_out)
+        return pred, last_conv_out
