@@ -90,7 +90,7 @@ class Res3DAttention(nn.Module):
 
 
 class Res3DSaliency(nn.Module):
-    def __init__(self, num_classes=2, model_type='r2plus1d_18', pretrained=True):
+    def __init__(self, num_classes=2, model_type='r3d_18', pretrained=True):
         super(Res3DSaliency, self).__init__()
         model = models.video.__dict__[model_type](pretrained=pretrained)
         in_channels = 1
