@@ -271,3 +271,27 @@ def get_resnet18(num_classes=3, pretrained=True):
     num_ftrs = model.fc.in_features
     model.fc = nn.Linear(num_ftrs, num_classes)
     return model
+
+
+class ResMultiView(nn.Module):
+    def __init__(self, device, num_classes=2, num_views=3, pretrained=True):
+        super(ResMultiView, self).__init__()
+        self.dev = device
+        model = resnet18(pretrained=pretrained)
+        in_channels = 1
+        fc_in_ftrs = model.fc.in_features
+        model.conv1 = nn.Conv2d(in_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
+        self.fe_model = nn.Sequential(*list(model.children())[:-1])  # All but last layer
+        self.fc = nn.Linear(fc_in_ftrs * num_views, num_classes)
+
+    def forward(self, x):
+
+        kapap_ftrs = self.fe_model(x['KAPAP'].to(self.dev))
+        kapap_ftrs = kapap_ftrs.view(kapap_ftrs.size(0), -1)
+        cv_ftrs = self.fe_model(x['CV'].to(self.dev))
+        cv_ftrs = kapap_ftrs.view(cv_ftrs.size(0), -1)
+        joined_ftrs = torch.cat((kapap_ftrs, cv_ftrs), dim=1)
+        out = self.fc(joined_ftrs)
+        return out
+
+

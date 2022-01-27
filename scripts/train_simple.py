@@ -10,7 +10,7 @@ from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 import wandb
 from echo_ph.data.echo_dataset import EchoDataset
 from echo_ph.models.conv_nets import ConvNet, SimpleConvNet
-from echo_ph.models.resnets import resnet_simpler, get_resnet18
+from echo_ph.models.resnets import resnet_simpler, get_resnet18, ResMultiView
 from echo_ph.models.resnet_3d import get_resnet3d_18, get_resnet3d_50, Res3DAttention, Res3DSaliency
 from echo_ph.data.ph_labels import long_label_type_to_short
 from echo_ph.evaluation.metrics import Metrics
@@ -93,9 +93,9 @@ parser.add_argument('--load_model', action='store_true',
                     help='Set this flag to load an already trained model to predict only, instead of training it.'
                          'If args.model_name is set, load model from that path. Otherwise, get model name acc. to'
                          'function get_run_name(), and load the corresponding model')
-parser.add_argument('--model', default='resnet', choices=['resnet', 'res_simple', 'conv', 'simple_conv',
-                                                          'r2plus1d_18', 'mc3_18', 'r3d_18', 'r3d_50',
-                                                          'saliency_r3d_18'],
+parser.add_argument('--model', default='resnet', choices=['resnet', 'resnet2d_multi_view', 'res_simple', 'conv',
+                                                          'simple_conv', 'r2plus1d_18', 'mc3_18', 'r3d_18',
+                                                          'r3d_18_multi_view', 'r3d_50', 'saliency_r3d_18'],
                     help='What model architecture to use. Note: r3d_50 is actually slow_fast (!)')
 parser.add_argument('--self_attention', action='store_true', help='If use self-attention (non-local block)')
 parser.add_argument('--map_attention', action='store_true', help='If use map-based attention')
@@ -229,7 +229,10 @@ def run_batch(batch, model, criterion=None, binary=False):
     :return: The required metrics for this batch, as well as the predictions and targets
     """
     dev = device('cuda' if cuda.is_available() else 'cpu')
-    input = batch["frame"][args.view].to(dev)  # Batch_size, (seq_len), num_channels, w, h => only single view for training
+    # input = batch["frame"][args.view].to(dev)  # Batch_size, (seq_len), num_channels, w, h => only single view for training
+    input = batch["frame"]  #.to(dev)
+    if not args.model.endswith('multi_view'):
+        input = input[args.view].to(dev)  # Batch_size, (seq_len), num_channels, w, h => single view
     if args.temporal:
         input = input.transpose(2, 1)  # Reshape to: (batch_size, channels, seq-len, W, H)
     targets = batch["label"].to(dev)
@@ -489,12 +492,12 @@ def main():
                                       augment=0, fold=args.fold, valid=True, view=args.view,
                                       crop_to_corner=args.crop,
                                       segm_mask_only=args.segm_masks)
-
+    views = ['KAPAP', 'CV', 'LA'] if args.model.endswith('multi_view') else args.view
     train_dataset = EchoDataset(train_index_file_path, label_path, videos_dir=args.videos_dir,
                                 cache_dir=args.cache_dir,
                                 transform=train_transforms, scaling_factor=args.scaling_factor,
                                 procs=args.num_workers, visualise_frames=args.visualise_frames,
-                                percentile=args.max_p, view=args.view, min_expansion=args.min_expansion,
+                                percentile=args.max_p, view=views, min_expansion=args.min_expansion,
                                 num_rand_frames=args.num_rand_frames, segm_masks=args.segm_masks,
                                 temporal=args.temporal, clip_len=args.clip_len, period=args.period)
     if args.weight_loss:
@@ -503,7 +506,7 @@ def main():
         class_weights = None
     valid_dataset = EchoDataset(valid_index_file_path, label_path, videos_dir=args.videos_dir, cache_dir=args.cache_dir,
                                 transform=valid_transforms, scaling_factor=args.scaling_factor, procs=args.num_workers,
-                                visualise_frames=args.visualise_frames, percentile=args.max_p, view=args.view,
+                                visualise_frames=args.visualise_frames, percentile=args.max_p, view=views,
                                 min_expansion=args.min_expansion, num_rand_frames=args.num_rand_frames,
                                 segm_masks=args.segm_masks, temporal=args.temporal,
                                 clip_len=args.clip_len, period=args.period)
@@ -532,6 +535,8 @@ def main():
             model = resnet_simpler(num_classes=num_classes, drop_prob=args.dropout).to(device)
         elif args.model == 'conv':
             model = ConvNet(num_classes=num_classes, dropout_val=args.dropout).to(device)
+        elif args.model == 'resnet2d_multi_view':
+            model = ResMultiView(device, num_classes=num_classes, pretrained=args.pretrained, num_views=3)
         else:
             model = SimpleConvNet(num_classes=num_classes).to(device)
     if args.multi_gpu:

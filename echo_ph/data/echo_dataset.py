@@ -11,10 +11,11 @@ from heart_echo.Helpers import Helpers
 from echo_ph.data.segmentation import SegmentationAnalyser
 import matplotlib.pyplot as plt
 import cv2
+import torchvision.transforms as trans
 
 # Try to add this also here, to encourage same 'random frames' to be selected per video
-RAND_SEED = 0
-np.random.seed(RAND_SEED)
+#RAND_SEED = 0
+#np.random.seed(RAND_SEED)
 
 
 def load_dynamic_video(filename: str) -> np.ndarray:
@@ -130,13 +131,23 @@ class EchoDataset(Dataset):
         t = time()
         with mp.Pool(processes=procs) as pool:
             for frames_per_view, label, sample_names in pool.map(self.load_sample, samples):
-                if frames_per_view is not None and label is not None and sample_names is not None:
-                    frames_per_view = np.swapaxes(frames_per_view, 0, 1)  # Shape: no_frames, no_views, ch, w, h
-                    for frame, sample_name in zip(frames_per_view, sample_names):
-                        # frames is here actually a list of frames for each view
-                        self.frames.append(frame)
+                #if frames_per_view is not None and label is not None and sample_names is not None:
+                # For multi-view in embedding space, only work with samples that have all views
+                if None not in [frames_per_view, label, sample_names] and len(frames_per_view) == len(self.views):
+                    no_frames = len(frames_per_view['KAPAP']) # Base view
+                    # frames_per_view = np.swapaxes(frames_per_view, 0, 1)  # Shape: no_frames, no_views, ch, w, h
+                    for frame_no in range(no_frames):
+                        view_dict = {}
+                        for view in self.views:
+                            view_dict[view] = frames_per_view[view][frame_no]
+                        self.frames.append(view_dict)
                         self.targets.append(label)
-                        self.sample_names.append(sample_name)
+                        self.sample_names.append(sample_names[frame_no])
+                    #for frame, sample_name in zip(frames_per_view, sample_names):
+                        # frames is here actually a list of frames for each view
+                        # self.frames.append(frame)
+                        # self.targets.append(label)
+                        # self.sample_names.append(sample_name)
 
         t = time() - t
         self.num_samples = len(self.frames)
@@ -147,7 +158,6 @@ class EchoDataset(Dataset):
             self.example_weights = None
         else:
             self.example_weights = [self.class_weights[t] for t in self.targets]
-            # self.example_weights = [self.class_weights[t * 2] for t in self.targets]
         print(f'Loaded Dataset with {self.num_samples} samples in {t:.2f} seconds. Label distribution:')
         for label, cnt in zip(self.labels, cnts):  # Print number of occurrences of each label
             print(label, ':', cnt)
@@ -192,16 +202,78 @@ class EchoDataset(Dataset):
             frames = all_frames[frame_nrs]
         return frames
 
+    # def load_sample(self, sample):
+    #     """
+    #     Load line regions and program for a given sample
+    #     :param sample: Sample from the file list paths.
+    #     :return: (line regions, parsed program, sample name)
+    #     """
+    #     if np.random.random() < 0.75:
+    #         return None, None, None
+    #     views = self.views
+    #     videos = []
+    #     for view in views:
+    #         if self.dynamic:
+    #             curr_video_path = os.path.join('/Users/hragnarsd/Documents/masters/dynamic/a4c-video-dir/Videos',
+    #                                            sample + '.avi')  # TODO: Don't have it hard-coded
+    #         elif self.cache_dir is None:  # Use raw videos, as no cached processed videos provided
+    #             curr_video_path = os.path.join(self.videos_dir, str(sample) + view + '.mp4')  # TODO: Generalise
+    #         else:  # Use cached videos
+    #             curr_video_path = os.path.join(self.cache_dir, str(sample) + view + '.npy')  # TODO: Generalise
+    #         if not os.path.exists(curr_video_path):
+    #             print(f'Skipping sample {sample}, as the video path {curr_video_path} does not exist')
+    #             return None, None, None
+    #         if self.segm_masks:  # Train only on segmentation mask frames
+    #             sample_w_ending = str(sample) + view
+    #             segm = SegmentationAnalyser(sample_w_ending,
+    #                                         os.path.join('segmented_results', str(self.scaling_factor)),
+    #                                         model_view=self.view_to_segmodel_view[view])
+    #             segm_video = segm.get_segm_mask()
+    #         else:
+    #             if self.dynamic:
+    #                 segm_video = load_dynamic_video(curr_video_path).astype(np.float32)
+    #             elif self.cache_dir is None:  # load raw video and process
+    #                 segm_video = load_and_process_video(curr_video_path)
+    #             else:  # load already processed numpy video
+    #                 segm_video = np.load(curr_video_path)
+    #         videos.append(segm_video)
+    #
+    #     # === Get frames for video ===
+    #     if self.num_rand_frames or self.all_frames:
+    #         total_len = min([len(vid) for vid in videos])  # the len will be the len of the shorter video
+    #         frame_nrs = self.get_frame_nrs(total_len=total_len)
+    #     else:  # Get max or min expansion frames, acc. to segmentation percentile
+    #         # This can only be reached in case a single model (bc. otherwise error in construction)
+    #         # Thus, can just pick view[0] - will be the only one!
+    #         sample_w_ending = str(sample) + views[0]
+    #         # Todo: Generalise segm result dir
+    #         segm = SegmentationAnalyser(sample_w_ending, os.path.join('segmented_results',
+    #                                                                   str(self.scaling_factor)),
+    #                                     model_view=self.view_to_segmodel_view[views[0]])
+    #         frame_nrs = segm.extract_max_percentile_frames(percentile=self.max_percentile,
+    #                                                        min_exp=self.min_expansion)
+    #     sample_names = [str(sample) + '_' + str(frame_nr) for frame_nr in frame_nrs]
+    #
+    #     frames_per_view = []
+    #     for segm_video in videos:
+    #         frames = self.get_frames(frame_nrs, segm_video)
+    #         frames_per_view.append(frames)
+    #     # === Get labels ===
+    #     with open(self.label_path, 'rb') as label_file:
+    #         all_labels = pickle.load(label_file)
+    #     if sample not in all_labels:  # ATH! When proper index files used, this should not happen
+    #         return None, None, None
+    #     label = all_labels[sample]
+    #     return frames_per_view, label, sample_names
+
     def load_sample(self, sample):
         """
         Load line regions and program for a given sample
         :param sample: Sample from the file list paths.
         :return: (line regions, parsed program, sample name)
         """
-        # if np.random.random() < 0.9:
-        #     return None, None, None
         views = self.views
-        videos = []
+        video_per_view = dict.fromkeys(self.views)
         for view in views:
             if self.dynamic:
                 curr_video_path = os.path.join('/Users/hragnarsd/Documents/masters/dynamic/a4c-video-dir/Videos',
@@ -226,11 +298,11 @@ class EchoDataset(Dataset):
                     segm_video = load_and_process_video(curr_video_path)
                 else:  # load already processed numpy video
                     segm_video = np.load(curr_video_path)
-            videos.append(segm_video)
+            video_per_view[view] = segm_video
 
-        # === Get frames for video ===
+        # === Get frames for video, set total video len to the minimum length of all views ===
         if self.num_rand_frames or self.all_frames:
-            total_len = min([len(vid) for vid in videos])  # the len will be the len of the shorter video
+            total_len = min([len(video_per_view[view]) for view in video_per_view])  # the len will be the len of the shorter video
             frame_nrs = self.get_frame_nrs(total_len=total_len)
         else:  # Get max or min expansion frames, acc. to segmentation percentile
             # This can only be reached in case a single model (bc. otherwise error in construction)
@@ -244,10 +316,11 @@ class EchoDataset(Dataset):
                                                            min_exp=self.min_expansion)
         sample_names = [str(sample) + '_' + str(frame_nr) for frame_nr in frame_nrs]
 
-        frames_per_view = []
-        for segm_video in videos:
-            frames = self.get_frames(frame_nrs, segm_video)
-            frames_per_view.append(frames)
+        frames_per_view = dict.fromkeys(self.views)
+        for view in video_per_view:
+            video = video_per_view[view]
+            frames = self.get_frames(frame_nrs, video)
+            frames_per_view[view] = frames
         # === Get labels ===
         with open(self.label_path, 'rb') as label_file:
             all_labels = pickle.load(label_file)
@@ -265,9 +338,8 @@ class EchoDataset(Dataset):
             max_label = 2  # hax - to change!
             label = label/max_label
         sample_name = self.sample_names[idx]
-        frame_per_view = dict.fromkeys(self.views, [])
-        for view in self.views:
-            frames = self.frames[idx][0].astype(np.uint8)
+        frame_per_view = self.frames[idx]
+        for view, frames in frame_per_view.items():
             if self.temporal:
                 frames = list(frames)
             s = (frames, sample_name.split('_')[0] + view)
