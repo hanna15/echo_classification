@@ -391,7 +391,10 @@ class Augment():
         self.view = view
         self.type = aug_type
         self.label_type = label_type
-        self.masks = self._get_masks(fold)
+        self.masks = {}
+        for curr_view in view:  # change to views
+            self.masks[curr_view] = self._get_masks(fold, curr_view)
+        # self.masks = self._get_masks(fold)
 
         # self.pad = 12
         self.pad = 18
@@ -412,18 +415,21 @@ class Augment():
         self.augments = [transforms.RandomRotation(degrees=15),
                          RandomResize(fill_val=0)]  # only black-background
 
-    def _get_masks(self, fold):
+    def _get_masks(self, fold, view):
         print('in _get_masks')
         #mask_fn = os.path.join(self.mask_path,
         #                       f'{self.size}_{int(100 * float(self.orig_img_scale))}_percent_fold{fold}.pt')
         # mask_fn = os.path.join(self.mask_path,  # view is already defined in the mask path!
         #                        f'{self.size}_{int(100 * float(self.orig_img_scale))}_percent_'
         #                        f'label{self.label_type}_fold{fold}.pt')
-        mask_fn = get_mask_fn(self.mask_path, self.size, self.orig_img_scale, self.label_type, fold)
+        mask_path = self.mask_path if view == 'KAPAP' else self.mask_path  + f'_{view}'
+        # mask_fn = get_mask_fn(self.mask_path, self.size, self.orig_img_scale, self.label_type, fold)
+        mask_fn = get_mask_fn(mask_path, self.size, self.orig_img_scale, self.label_type, fold)
         print(mask_fn)
         if not os.path.exists(mask_fn):
             # utilities.generate_masks(self.size, self.orig_img_scale)
-            gen_masks(mask_fn, self.size, self.orig_img_scale, self.index_file_path, view=self.view)
+            # gen_masks(mask_fn, self.size, self.orig_img_scale, self.index_file_path, view=self.view)
+            gen_masks(mask_fn, self.size, self.orig_img_scale, self.index_file_path, view=view)
         return torch.load(mask_fn)
 
     def _apply_background_noise(self, sample, mask):
@@ -493,7 +499,9 @@ class Augment():
     def __call__(self, sample):
         # Get sample and corresponding mask
         sample, p_id = sample
-
+        view, p_id = p_id.split('_')
+        p_id = p_id + view  # without the _
+        print('sample')
         # In augment type 1, 25 % of images don't get any augmentation
         if self.type == 1 and torch.rand(1) < 0.25:
             if self.return_pid:
@@ -506,7 +514,8 @@ class Augment():
                 return sample, p_id
             return sample
 
-        mask = self.masks[p_id].unsqueeze(0)
+        # mask = self.masks[p_id].unsqueeze(0)
+        mask = self.masks[view][p_id].unsqueeze(0)
         mask = mask.to(sample.device)         # Try moving mask to gpu if available
 
         # Apply intensity transformations to 50 % of images
@@ -582,7 +591,8 @@ def get_transforms(
     """
     subset = 'valid' if valid else 'train'
     view_set = '' if view == 'KAPAP' else f'_{view}'  # Only specify separately if not default
-    mask_path = os.path.expanduser(os.path.join('~', '.echo-net', 'masks', subset + view_set))
+    # mask_path = os.path.expanduser(os.path.join('~', '.echo-net', 'masks', subset + view_set))
+    mask_path = os.path.expanduser(os.path.join('~', '.echo-net', 'masks', subset))
     print(mask_path)
     corner_path = os.path.expanduser(os.path.join('~', '.echo-net', 'mask_corners', subset + view_set))
     max_val = 255.

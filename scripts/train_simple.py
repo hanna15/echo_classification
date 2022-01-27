@@ -478,21 +478,21 @@ def main():
     valid_index_file_path = get_index_file_path(args.k, args.fold, args.label_type, train=False)
 
     size = args.img_size
+    views = ['KAPAP', 'CV', 'LA'] if args.model.endswith('multi_view') else args.view
     if args.augment and not args.load_model:  # All augmentations
         train_transforms = get_transforms(train_index_file_path, dataset_orig_img_scale=args.scaling_factor, resize=size,
-                                          augment=args.aug_type, fold=args.fold, valid=False, view=args.view,
+                                          augment=args.aug_type, fold=args.fold, valid=False, view=views,
                                           crop_to_corner=args.crop, segm_mask_only=args.segm_masks,
                                           label_type=args.label_type)
     else:
         train_transforms = get_transforms(train_index_file_path, dataset_orig_img_scale=args.scaling_factor, resize=size,
-                                          augment=0, fold=args.fold, valid=False, view=args.view,
+                                          augment=0, fold=args.fold, valid=False, view=views,
                                           crop_to_corner=args.crop,
                                           segm_mask_only=args.segm_masks)
     valid_transforms = get_transforms(valid_index_file_path, dataset_orig_img_scale=args.scaling_factor, resize=size,
-                                      augment=0, fold=args.fold, valid=True, view=args.view,
+                                      augment=0, fold=args.fold, valid=True, view=views,
                                       crop_to_corner=args.crop,
                                       segm_mask_only=args.segm_masks)
-    views = ['KAPAP', 'CV', 'LA'] if args.model.endswith('multi_view') else args.view
     train_dataset = EchoDataset(train_index_file_path, label_path, videos_dir=args.videos_dir,
                                 cache_dir=args.cache_dir,
                                 transform=train_transforms, scaling_factor=args.scaling_factor,
@@ -536,7 +536,7 @@ def main():
         elif args.model == 'conv':
             model = ConvNet(num_classes=num_classes, dropout_val=args.dropout).to(device)
         elif args.model == 'resnet2d_multi_view':
-            model = ResMultiView(device, num_classes=num_classes, pretrained=args.pretrained, num_views=3)
+            model = ResMultiView(device, num_classes=num_classes, pretrained=args.pretrained, num_views=len(views))
         else:
             model = SimpleConvNet(num_classes=num_classes).to(device)
     if args.multi_gpu:
