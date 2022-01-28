@@ -536,7 +536,7 @@ def main():
         elif args.model == 'conv':
             model = ConvNet(num_classes=num_classes, dropout_val=args.dropout).to(device)
         elif args.model == 'resnet2d_multi_view':
-            model = ResMultiView(device, num_classes=num_classes, pretrained=args.pretrained, num_views=len(views))
+            model = ResMultiView(device, num_classes=num_classes, pretrained=args.pretrained, num_views=len(views)).to(device)
         else:
             model = SimpleConvNet(num_classes=num_classes).to(device)
     if args.multi_gpu:
