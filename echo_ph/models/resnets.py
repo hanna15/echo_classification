@@ -274,9 +274,11 @@ def get_resnet18(num_classes=3, pretrained=True):
 
 
 class ResMultiView(nn.Module):
-    def __init__(self, device, num_classes=2, num_views=3, pretrained=True):
+    def __init__(self, device, num_classes=2, views=['KAPAP', 'CV', 'LA'], pretrained=True):
         super(ResMultiView, self).__init__()
         self.dev = device
+        self.views = views
+        num_views = len(self.views)
         model = resnet18(pretrained=pretrained)
         in_channels = 1
         fc_in_ftrs = model.fc.in_features
@@ -285,12 +287,25 @@ class ResMultiView(nn.Module):
         self.fc = nn.Linear(fc_in_ftrs * num_views, num_classes)
 
     def forward(self, x):
-
-        kapap_ftrs = self.fe_model(x['KAPAP'].to(self.dev))
-        kapap_ftrs = kapap_ftrs.view(kapap_ftrs.size(0), -1)
-        cv_ftrs = self.fe_model(x['CV'].to(self.dev))
-        cv_ftrs = kapap_ftrs.view(cv_ftrs.size(0), -1)
-        joined_ftrs = torch.cat((kapap_ftrs, cv_ftrs), dim=1)
+        # kapap = x['KAPAP'].to(self.dev)
+        # cv = x['CV'].to(self.dev)
+        # la = x['LA'].to(self.dev)
+        # kapap_ftrs = self.fe_model(kapap)
+        # kapap_ftrs = kapap_ftrs.view(kapap_ftrs.size(0), -1)
+        # cv_ftrs = self.fe_model(cv)
+        # cv_ftrs = kapap_ftrs.view(cv_ftrs.size(0), -1)
+        # la_ftrs = self.fe_model(la)
+        # la_ftrs = la_ftrs.view(la_ftrs.size(0), -1)
+        # joined_ftrs = torch.cat((kapap_ftrs, cv_ftrs, la_ftrs), dim=1)
+        # out = self.fc(joined_ftrs)
+        # return out
+        all_features = []
+        for view in self.views:
+            inp = x[view].to(self.dev)
+            ftrs = self.fe_model(inp)
+            ftrs = ftrs.view(ftrs.size(0), -1)
+            all_features.append(ftrs)
+        joined_ftrs = torch.cat(all_features, dim=1)
         out = self.fc(joined_ftrs)
         return out
 

@@ -110,3 +110,32 @@ class Res3DSaliency(nn.Module):
         avg_out = avg_out.view(avg_out.size(0), -1)
         pred = self.fc(avg_out)
         return pred, last_conv_out
+
+
+class Res3DMultiView(nn.Module):
+    def __init__(self, device, num_classes=2, model_type='r3d_18', views=['KAPAP', 'CV', 'LA'], pretrained=True):
+        super(Res3DMultiView, self).__init__()
+        self.dev = device
+        self.views = views
+        num_views = len(self.views)
+        model = models.video.__dict__[model_type](pretrained=pretrained)
+        in_channels = 1
+        fc_in_ftrs = model.fc.in_features
+        model.stem[0] = torch.nn.Conv3d(in_channels, model.stem[0].out_channels, kernel_size=(1, 7, 7),
+                                        stride=(1, 2, 2),
+                                        padding=(0, 3, 3), bias=False)
+        self.fe_model = nn.Sequential(*list(model.children())[:-1])  # All but last layer
+        self.fc = nn.Linear(fc_in_ftrs * num_views, num_classes)
+
+    def forward(self, x):
+        all_features = []
+        for view in self.views:
+            inp = x[view].transpose(2, 1).to(self.dev)
+            ftrs = self.fe_model(inp)
+            ftrs = ftrs.view(ftrs.size(0), -1)
+            all_features.append(ftrs)
+        joined_ftrs = torch.cat(all_features, dim=1)
+        out = self.fc(joined_ftrs)
+        return out
+
+
