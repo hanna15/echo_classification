@@ -94,7 +94,8 @@ class EchoDataset(Dataset):
         if isinstance(view, list) and num_rand_frames is None and all_frames is None:
             print("Multiple views are only supported in conjunction with random frames or all frames,"
                   "not min/max frames - as those differ between views")
-        self.views = view if isinstance(view, list) else [view]
+        # self.views = view if isinstance(view, list) else [view]
+        self.views = view
         # self.frames = dict.fromkeys(self.views, [])
         self.frames = []
         self.targets = []
@@ -134,7 +135,7 @@ class EchoDataset(Dataset):
                 #if frames_per_view is not None and label is not None and sample_names is not None:
                 # For multi-view in embedding space, only work with samples that have all views
                 if None not in [frames_per_view, label, sample_names] and len(frames_per_view) == len(self.views):
-                    no_frames = len(frames_per_view['KAPAP']) # Base view
+                    no_frames = len(frames_per_view['KAPAP'])  # Base view
                     # frames_per_view = np.swapaxes(frames_per_view, 0, 1)  # Shape: no_frames, no_views, ch, w, h
                     for frame_no in range(no_frames):
                         view_dict = {}
@@ -340,6 +341,9 @@ class EchoDataset(Dataset):
         sample_name = self.sample_names[idx]
         frame_per_view = self.frames[idx]
         for view, frames in frame_per_view.items():
+            if not len(np.shape(frames)) > 2:  # If it has not been already modified (due to a multi-processing glitch)
+                s = (frames, sample_name.split('_')[0] + '_' + view)
+                frames = self.transform(s)
             if self.temporal:
                 frames = list(frames)
             s = (frames, sample_name.split('_')[0] + '_' + view)
