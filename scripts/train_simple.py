@@ -11,7 +11,7 @@ import wandb
 from echo_ph.data.echo_dataset import EchoDataset
 from echo_ph.models.conv_nets import ConvNet, SimpleConvNet
 from echo_ph.models.resnets import resnet_simpler, get_resnet18, ResMultiView
-from echo_ph.models.resnet_3d import get_resnet3d_18, get_resnet3d_50, Res3DAttention, Res3DSaliency
+from echo_ph.models.resnet_3d import get_resnet3d_18, get_resnet3d_50, Res3DAttention, Res3DSaliency, Res3DMultiView
 from echo_ph.data.ph_labels import long_label_type_to_short
 from echo_ph.evaluation.metrics import Metrics
 from utils.transforms2 import get_transforms
@@ -64,8 +64,8 @@ parser.add_argument('--run_id', type=str, default='',
                     help='Set a unique_run_id, to identify run if arguments alone are not enough to identify (e.g. when'
                          'running on same settings multiple times). Id will be pre-pended to the run name derived '
                          'from arguments. Default is empty string, i.e. only identify run with arguments.')
-parser.add_argument('--view', type=str, default='KAPAP', choices=['KAPAP', 'CV', 'KAAP', 'LA', 'KAKL'],
-                    help='What view to use')
+parser.add_argument('--view', nargs='+', type=str, default=['KAPAP'],  help='What view (s) to use')
+                    # choices: 'KAPAP', 'CV', 'KAAP', 'LA', 'KAKL' )
 # Data parameters
 parser.add_argument('--scaling_factor', default=0.25, help='How much to scale (down) the videos, as a ratio of original '
                                                           'size. Also determines the cache sub-folder')
@@ -196,8 +196,10 @@ def get_run_name():
         run_name += 'rand_n' + str(args.num_rand_frames)
     if args.crop:
         run_name += '_crop'
-    if args.view != 'KAPAP':
-        run_name += '_' + args.view
+    if len(args.view) > 1:
+        run_name += '_multi_view'
+    elif args.view[0] != 'KAPAP':
+            run_name += '_' + args.view
     return run_name
 
 
@@ -229,12 +231,13 @@ def run_batch(batch, model, criterion=None, binary=False):
     :return: The required metrics for this batch, as well as the predictions and targets
     """
     dev = device('cuda' if cuda.is_available() else 'cpu')
-    # input = batch["frame"][args.view].to(dev)  # Batch_size, (seq_len), num_channels, w, h => only single view for training
     input = batch["frame"]  #.to(dev)
-    if not args.model.endswith('multi_view'):
-        input = input[args.view].to(dev)  # Batch_size, (seq_len), num_channels, w, h => single view
-    if args.temporal:
-        input = input.transpose(2, 1)  # Reshape to: (batch_size, channels, seq-len, W, H)
+    if len(args.view) == 1:  # single_view
+        view = args.view[0]
+        input = input[view].to(dev)  # Batch_size, (seq_len), num_channels, w, h => single view
+        if args.temporal:
+            input = input.transpose(2, 1)  # Reshape to: (batch_size, channels, seq-len, W, H)
+    # Else if multi_view, further input processing happens in model
     targets = batch["label"].to(dev)
     sample_names = batch["sample_name"]
     outputs = model(input)
@@ -478,7 +481,7 @@ def main():
     valid_index_file_path = get_index_file_path(args.k, args.fold, args.label_type, train=False)
 
     size = args.img_size
-    views = ['KAPAP', 'CV', 'LA'] if args.model.endswith('multi_view') else args.view
+    views = args.view
     if args.augment and not args.load_model:  # All augmentations
         train_transforms = get_transforms(train_index_file_path, dataset_orig_img_scale=args.scaling_factor, resize=size,
                                           augment=args.aug_type, fold=args.fold, valid=False, view=views,
@@ -516,6 +519,8 @@ def main():
     # Model & Optimizers
     num_classes = len(train_dataset.labels)
     if args.temporal:
+        if args.model == 'r3d_18_multi_view':
+            Res3DMultiView(device, num_classes=num_classes, pretrained=args.pretrained, views=views).to(device)
         if args.model == 'saliency_r3d_18':
             model = Res3DSaliency(num_classes=num_classes, pretrained=args.pretrained).to(device)
         elif args.model.endswith('18'):
@@ -536,7 +541,7 @@ def main():
         elif args.model == 'conv':
             model = ConvNet(num_classes=num_classes, dropout_val=args.dropout).to(device)
         elif args.model == 'resnet2d_multi_view':
-            model = ResMultiView(device, num_classes=num_classes, pretrained=args.pretrained, num_views=len(views)).to(device)
+            model = ResMultiView(device, num_classes=num_classes, pretrained=args.pretrained, views=views).to(device)
         else:
             model = SimpleConvNet(num_classes=num_classes).to(device)
     if args.multi_gpu:
