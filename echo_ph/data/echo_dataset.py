@@ -342,8 +342,7 @@ class EchoDataset(Dataset):
         for view, frames in frame_per_view.items():
             if self.temporal:
                 frames = list(frames)
-            # s = (frames, sample_name.split('_')[0] + view)
-            s = (frames, sample_name)
+            s = (frames, sample_name.split('_')[0] + '_' + view)
             frames = self.transform(s)
             frame_per_view[view] = frames  # over-write with transformed frames
             if self.visualise_frames:

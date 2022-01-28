@@ -422,7 +422,7 @@ class Augment():
         # mask_fn = os.path.join(self.mask_path,  # view is already defined in the mask path!
         #                        f'{self.size}_{int(100 * float(self.orig_img_scale))}_percent_'
         #                        f'label{self.label_type}_fold{fold}.pt')
-        mask_path = self.mask_path if view == 'KAPAP' else self.mask_path  + f'_{view}'
+        mask_path = self.mask_path if view == 'KAPAP' else self.mask_path + f'_{view}'
         # mask_fn = get_mask_fn(self.mask_path, self.size, self.orig_img_scale, self.label_type, fold)
         mask_fn = get_mask_fn(mask_path, self.size, self.orig_img_scale, self.label_type, fold)
         print(mask_fn)
@@ -499,9 +499,8 @@ class Augment():
     def __call__(self, sample):
         # Get sample and corresponding mask
         sample, p_id = sample
-        view, p_id = p_id.split('_')
-        p_id = p_id + view  # without the _
-        print('sample')
+        p_id, view = p_id.split('_')
+        p_id = p_id + view  # without the '_'
         # In augment type 1, 25 % of images don't get any augmentation
         if self.type == 1 and torch.rand(1) < 0.25:
             if self.return_pid:
