@@ -2,7 +2,7 @@ import tensorflow as tf
 
 
 # Convolution Layer
-def conv(x, filter_size, num_filters, stride, weight_decay, name, padding='SAME', groups=1, trainable=True, relu=True):
+def conv(x, filter_size, num_filters, stride, name, padding='SAME', groups=1, trainable=True, relu=True):
     input_channels = int(x.get_shape()[-1])
 
     # Create lambda function for the convolution
@@ -10,14 +10,13 @@ def conv(x, filter_size, num_filters, stride, weight_decay, name, padding='SAME'
 
     with tf.compat.v1.variable_scope(name):
         # Create tf variables for the weights and biases of the conv layer
-        # regularizer = tf.compat.v1.estimator.layers.l2_regularizer(weight_decay)
         weights = tf.compat.v1.get_variable('W',
                                             shape=[filter_size, filter_size, input_channels // groups, num_filters],
                                             initializer=tf.initializers.GlorotUniform(),  # same as xaviar
                                             trainable=trainable,
-                                            # regularizer=regularizer,
                                             collections=['variables'])
-        biases = tf.compat.v1.get_variable('b', shape=[num_filters], trainable=trainable, initializer=tf.zeros_initializer())
+        biases = tf.compat.v1.get_variable('b', shape=[num_filters], trainable=trainable,
+                                           initializer=tf.zeros_initializer())
 
         if groups == 1:
             conv = convolve(x, weights)
@@ -36,7 +35,7 @@ def conv(x, filter_size, num_filters, stride, weight_decay, name, padding='SAME'
             return conv + biases
 
 
-def deconv(x, filter_size, num_filters, stride, weight_decay, name, padding='SAME', relu=True):
+def deconv(x, filter_size, num_filters, stride, name, padding='SAME', relu=True):
     activation = None
     if relu:
         activation = tf.nn.relu
@@ -68,7 +67,7 @@ class Unet(object):
         self.pred = self.unet(self.x_test, mean, keep_prob=1.0, reuse=True)
         self.loss_summary = tf.summary.scalar('loss', self.loss)
 
-    #         self.train_summary = tf.summary.scalar('training_accuracy', self.train_accuracy)
+    #  self.train_summary = tf.summary.scalar('training_accuracy', self.train_accuracy)
 
     # Gradient Descent on mini-batch
     def fit_batch(self, sess, x_train, y_train):
@@ -82,20 +81,16 @@ class Unet(object):
 
     def unet(self, input, mean, keep_prob=0.5, reuse=None):
         width = 1
-        weight_decay = 1e-12
         label_dim = self.label_dim
         with tf.compat.v1.variable_scope('vgg', reuse=reuse):
             input = input - mean
             pool_ = lambda x: max_pool(x, 2, 2)
             conv_ = lambda x, output_depth, name, padding='SAME', relu=True, filter_size=3: conv(x, filter_size,
                                                                                                  output_depth, 1,
-                                                                                                 weight_decay,
                                                                                                  name=name,
                                                                                                  padding=padding,
                                                                                                  relu=relu)
-            deconv_ = lambda x, output_depth, name: deconv(x, 2, output_depth, 2, weight_decay, name=name)
-            # fc_ = lambda x, features, name, relu=True: fc(x, features, weight_decay, name, relu)
-
+            deconv_ = lambda x, output_depth, name: deconv(x, 2, output_depth, 2, name=name)
             conv_1_1 = conv_(input, int(64 * width), 'conv1_1')
             conv_1_2 = conv_(conv_1_1, int(64 * width), 'conv1_2')
 

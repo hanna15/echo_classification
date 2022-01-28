@@ -53,8 +53,8 @@ parser.add_argument('--video_ids', default=None, nargs='+', type=int, help='Inst
 parser.add_argument('--dynamic', action='store_true', help='If run on dynamic dataset')
 
 
-def get_data_loader(video_ids, train=False):
-    if args.dynamic:
+def get_data_loader(video_ids, train=False, dynamic=False):
+    if dynamic:
         label_path = os.path.join('label_files', 'dynamic_test_labels.pkl')
     else:
         label_path = os.path.join('label_files', 'labels_' + args.label_type + '.pkl')
@@ -126,10 +126,10 @@ def get_save_grad_cam_images(data_loader, model, cam, device, subset='valid'):
 
 
 def get_video_ids(train=False):
-    if args.dynamic: # Fetch the videos in the EchoNet-Dynamics validation dataset
+    if args.dynamic:  # Fetch the videos in the EchoNet-Dynamics validation dataset
         index_file_path = os.path.join('index_files', 'dynamic_test_index.npy')
         video_ids = np.load(index_file_path)
-    elif args.video_ids: # Set video ids to the provided video ids
+    elif args.video_ids:  # Set video ids to the provided video ids
         video_ids = args.video_ids
     else:  # Fetch the appropriate index file
         idx_dir = 'index_files' if args.k is None else os.path.join('index_files', 'k' + str(args.k))
@@ -159,11 +159,11 @@ def main():
     print("Done initialising grad cam with model")
     # Start to predict for each video_id
     for video_id in val_video_ids:
-        val_data_loader = get_data_loader(video_ids=[video_id])
+        val_data_loader = get_data_loader(video_ids=[video_id], dynamic=args.dynamic)
         get_save_grad_cam_images(val_data_loader, model, cam, device)
     if args.train_set:
         for video_id in train_video_ids:
-            train_data_loader = get_data_loader(video_ids=[video_id], train=True)
+            train_data_loader = get_data_loader(video_ids=[video_id], train=True, dynamic=args.dynamic)
             get_save_grad_cam_images(train_data_loader, model, cam, device, subset='train')
 
 

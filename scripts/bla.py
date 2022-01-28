@@ -15,12 +15,11 @@ from utils.helpers import get_index_file_path
 import os
 
 """
-A script to create grad-cam visualisations on spatial models, either saving as frames or videos.
-Can let it run on all frames in an entire dataset, or specified videos.
+A script for multi-view classification
 """
 
 parser = ArgumentParser(
-    description='Arguments for visualising grad cam',
+    description='Arguments for multi-view classification',
     formatter_class=ArgumentDefaultsHelpFormatter)
 # Arguments per model, to be averaged
 parser.add_argument('--model_dir_paths', nargs='+',
@@ -71,7 +70,7 @@ def get_data_loader(fold, views=['KAPAP', 'CV'], train=False, temp=False):
     return data_loader
 
 
-def foo(data_loader, model, device, temporal=False, view='KAPAP'):
+def read(data_loader, model, device, temporal=False, view='KAPAP'):
     outputs = []
     targets = []
     samples = []
@@ -111,7 +110,7 @@ def main():
             model.load_state_dict(torch.load(model_path, map_location=device))
             model.eval()
             model = model.to(device)
-            outputs, targets, samples = foo(val_data_loader, model, device, temporal=args.temp, view=view)
+            outputs, targets, samples = read(val_data_loader, model, device, temporal=args.temp, view=view)
             total_outs.append(outputs)
             total_targets.append(targets)
             total_samples.append(samples)
