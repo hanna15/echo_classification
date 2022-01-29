@@ -273,6 +273,8 @@ class EchoDataset(Dataset):
         :param sample: Sample from the file list paths.
         :return: (line regions, parsed program, sample name)
         """
+        if np.random.random() < 0.7:
+            return None, None, None
         views = self.views
         video_per_view = dict.fromkeys(self.views)
         for view in views:
@@ -341,9 +343,9 @@ class EchoDataset(Dataset):
         sample_name = self.sample_names[idx]
         frame_per_view = self.frames[idx]
         for view, frames in frame_per_view.items():
-            if self.temporal:
-                frames = list(frames)
             if (not self.temporal and len(np.shape(frames)) <= 2) or (self.temporal and len(np.shape(frames[0])) <= 2):  # If it has not been already modified (due to a multi-processing glitch)
+                if self.temporal:
+                    frames = list(frames)
                 s = (frames, sample_name.split('_')[0] + '_' + view)
                 frames = self.transform(s)
             frame_per_view[view] = frames  # over-write with transformed frames
