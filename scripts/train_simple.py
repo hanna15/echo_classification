@@ -520,8 +520,8 @@ def main():
     num_classes = len(train_dataset.labels)
     if args.temporal:
         if args.model == 'r3d_18_multi_view':
-            Res3DMultiView(device, num_classes=num_classes, pretrained=args.pretrained, views=views).to(device)
-        if args.model == 'saliency_r3d_18':
+            model = Res3DMultiView(device, num_classes=num_classes, pretrained=args.pretrained, views=views).to(device)
+        elif args.model == 'saliency_r3d_18':
             model = Res3DSaliency(num_classes=num_classes, pretrained=args.pretrained).to(device)
         elif args.model.endswith('18'):
                 if args.self_attention or args.map_attention:
