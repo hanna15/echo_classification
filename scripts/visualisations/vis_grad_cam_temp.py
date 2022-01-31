@@ -185,7 +185,6 @@ def get_save_grad_cam_images(data_loader, model, device, subset='valid'):
             clip_titles = video_clips[video_id][2]  # get titles for clips in video, to extract no. corrs & label
             clips_corrs = np.asarray([frame_title.split('-')[1] for frame_title in clip_titles])
             ratio_corr = (clips_corrs == 'CORR').sum() / len(clip_titles)
-            print('ratio corr', ratio_corr)
             if save_all or (good and ratio_corr >= args.corr_thres) or (bad and ratio_corr <= args.wrong_thresh):
                 true_label = clip_titles[0].split('-')[-1][:-4]
                 video_title = f'{video_id}-{ratio_corr:.2f}-{true_label}.jpg'
