@@ -125,17 +125,31 @@ class Res3DMultiView(nn.Module):
                                         stride=(1, 2, 2),
                                         padding=(0, 3, 3), bias=False)
         self.fe_model = nn.Sequential(*list(model.children())[:-1])  # All but last layer
+        self.fe_model_non_avg = nn.Sequential(*list(model.children())[:-2])  # All but last layer & but avg.pool
+        self.avgpool = nn.AdaptiveAvgPool3d(output_size=(1, 1, 1))
         self.fc = nn.Linear(fc_in_ftrs * num_views, num_classes)
 
     def forward(self, x):
+        # all_features = []
+        # for view in self.views:
+        #     inp = x[view].transpose(2, 1).to(self.dev)
+        #     ftrs = self.fe_model(inp)
+        #     ftrs = ftrs.view(ftrs.size(0), -1)
+        #     all_features.append(ftrs)
+        # joined_ftrs = torch.cat(all_features, dim=1)
+        # out = self.fc(joined_ftrs)
+        # return out
+
+        # Try concat first, then avg. pool
         all_features = []
         for view in self.views:
             inp = x[view].transpose(2, 1).to(self.dev)
-            ftrs = self.fe_model(inp)
-            ftrs = ftrs.view(ftrs.size(0), -1)
+            ftrs = self.fe_model_non_avg(inp)
             all_features.append(ftrs)
         joined_ftrs = torch.cat(all_features, dim=1)
-        out = self.fc(joined_ftrs)
+        ftrs = self.avgpool(joined_ftrs)
+        ftrs = ftrs.view(ftrs.size(0), -1)
+        out = self.fc(ftrs)
         return out
 
 
