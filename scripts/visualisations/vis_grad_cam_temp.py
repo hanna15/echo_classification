@@ -8,7 +8,7 @@ from medcam import medcam
 from utils.transforms2 import get_transforms
 from utils.helpers import get_index_file_path
 from echo_ph.data import EchoDataset
-from echo_ph.models.resnet_3d import get_resnet3d_18, get_resnet3d_50
+from echo_ph.models.resnet_3d import get_resnet3d_18, get_resnet3d_50, Res3DSaliency
 from echo_ph.visual.video_saver import VideoSaver
 import cv2
 import matplotlib.cm as cm
@@ -25,7 +25,8 @@ parser = ArgumentParser(
 parser.add_argument('--model_path', default=None, help='set to path of a model state dict, to evaluate on. '
                                                        'If None, use resnet18 pretrained on Imagenet only.')
 parser.add_argument('--out_dir', default='grad_cam_3d', help='Name of directory storing the results')
-parser.add_argument('--model', default='r3d_18', choices=['r2plus1d_18', 'mc3_18', 'r3d_18', 'r3d_50'],
+parser.add_argument('--model', default='r3d_18', choices=['r2plus1d_18', 'mc3_18', 'r3d_18', 'r3d_50',
+                                                          'saliency_r3d_18'],
                     help='What model architecture to use.')
 parser.add_argument('--label_type', default='2class_drop_ambiguous',
                     choices=['2class', '2class_drop_ambiguous', '3class'])
@@ -193,7 +194,9 @@ def main():
     val_data_loader = get_data_loader()
     print("Done loading valid data")
     num_classes = 2 if args.label_type.startswith('2') else 3
-    if args.model.endswith('18'):
+    if args.model == 'saliency_r3d_18':
+        model = Res3DSaliency(num_classes=num_classes, return_last=False)
+    elif args.model.endswith('18'):
         model = get_resnet3d_18(num_classes=num_classes, model_type=args.model).to(device)
     else:
         model = get_resnet3d_50(num_classes=num_classes).to(device)

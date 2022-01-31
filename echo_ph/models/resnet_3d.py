@@ -90,8 +90,9 @@ class Res3DAttention(nn.Module):
 
 
 class Res3DSaliency(nn.Module):
-    def __init__(self, num_classes=2, model_type='r3d_18', pretrained=True):
+    def __init__(self, num_classes=2, model_type='r3d_18', pretrained=True, return_last=True):
         super(Res3DSaliency, self).__init__()
+        self.return_last = return_last
         model = models.video.__dict__[model_type](pretrained=pretrained)
         in_channels = 1
         model.stem[0] = torch.nn.Conv3d(in_channels, model.stem[0].out_channels, kernel_size=(1, 7, 7),
@@ -109,7 +110,10 @@ class Res3DSaliency(nn.Module):
         avg_out = self.avgpool(last_conv_out)
         avg_out = avg_out.view(avg_out.size(0), -1)
         pred = self.fc(avg_out)
-        return pred, last_conv_out
+        if self.return_last:
+            return pred, last_conv_out
+        else:
+            return pred
 
 
 class Res3DMultiView(nn.Module):
@@ -127,7 +131,8 @@ class Res3DMultiView(nn.Module):
         self.fe_model = nn.Sequential(*list(model.children())[:-1])  # All but last layer
         self.fe_model_non_avg = nn.Sequential(*list(model.children())[:-2])  # All but last layer & but avg.pool
         self.avgpool = nn.AdaptiveAvgPool3d(output_size=(1, 1, 1))
-        self.fc = nn.Linear(fc_in_ftrs * num_views, num_classes)
+        # self.fc = nn.Linear(fc_in_ftrs * num_views, num_classes)
+        self.fc = nn.Linear(fc_in_ftrs, num_classes)
 
     def forward(self, x):
         # all_features = []
@@ -146,7 +151,8 @@ class Res3DMultiView(nn.Module):
             inp = x[view].transpose(2, 1).to(self.dev)
             ftrs = self.fe_model_non_avg(inp)
             all_features.append(ftrs)
-        joined_ftrs = torch.cat(all_features, dim=1)
+        # joined_ftrs = torch.cat(all_features, dim=1)
+        joined_ftrs = torch.stack(all_features, dim=0).sum(dim=0)  # Try to join features by summing instead of concatting
         ftrs = self.avgpool(joined_ftrs)
         ftrs = ftrs.view(ftrs.size(0), -1)
         out = self.fc(ftrs)
