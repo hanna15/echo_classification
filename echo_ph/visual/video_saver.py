@@ -8,7 +8,6 @@ class VideoSaver():
         self.grad_cam_frames = grad_cam_frames
         self.max_frames = max_frames
         self.fps = fps
-        print(self.fps)
         self.out_dir = out_dir
         os.makedirs(out_dir, exist_ok=True)
 
