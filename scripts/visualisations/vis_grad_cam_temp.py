@@ -195,7 +195,7 @@ def main():
     print("Done loading valid data")
     num_classes = 2 if args.label_type.startswith('2') else 3
     if args.model == 'saliency_r3d_18':
-        model = Res3DSaliency(num_classes=num_classes, return_last=False)
+        model = Res3DSaliency(num_classes=num_classes, return_last=False).to(device)
     elif args.model.endswith('18'):
         model = get_resnet3d_18(num_classes=num_classes, model_type=args.model).to(device)
     else:
