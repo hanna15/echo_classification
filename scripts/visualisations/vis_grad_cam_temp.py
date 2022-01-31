@@ -39,7 +39,7 @@ parser.add_argument('--k', default=10, type=int,
                     help='In case of k-fold cross-validation, set the k, i.e. how many folds all in all. '
                          'Will be used to fetch the relevant k-th train and valid index file')
 parser.add_argument('--n_workers', default=8, type=int)
-parser.add_argument('--vis_type', default='gcam', choices=['gcam', 'cam'], help='what visualis. type (backend) to use')
+parser.add_argument('--vis_type', default='gcam', choices=['gcam', 'gbp'], help='what visualis. type (backend) to use')
 
 # Amount of samples / clips to pick
 parser.add_argument('--num_rand_samples', type=int, default=None,
