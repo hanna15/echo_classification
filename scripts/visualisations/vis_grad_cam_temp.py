@@ -55,7 +55,6 @@ parser.add_argument('--train_set', action='store_true', help='Also get grad cam 
                                                              'with random augmentation (type 3)')
 parser.add_argument('--video_ids', default=None, nargs='+', type=int,
                     help='Instead of getting results acc.to index file, get results for specific video ids')
-parser.add_argument('--zip', action='store_true', help='Zip the resulting dir')
 
 # What to save / show
 parser.add_argument('--save_video_clips', action='store_true', help='Save individual video clips')
@@ -123,11 +122,9 @@ def overlay(raw_input, attention_map):
 
 
 def get_save_grad_cam_images(data_loader, model, device, subset='valid'):
-    base_res_dir = os.path.join(args.out_dir, subset)
-    os.makedirs(base_res_dir, exist_ok=True)
+    out_dir = args.out_dir + '_' + args.vis_type
+    os.makedirs(out_dir, exist_ok=True)
     video_clips = {}
-    output_dir = os.path.join('grad_cam_vis', 'temp', subset)
-    os.makedirs(output_dir, exist_ok=True)
     for batch in data_loader:
         inp = batch['frame'][args.view].to(device).transpose(2, 1)  # Reshape to: (batch_size, channels, seq-len, W, H)
         sample_name = batch['sample_name'][0]
@@ -140,8 +137,6 @@ def get_save_grad_cam_images(data_loader, model, device, subset='valid'):
         title = f'{sample_name}-{corr}-{label}.jpg'
         video = np.swapaxes(inp, 1, 2)[0]  # re-shape to no_frames, ch, W, H
         att_video_clip = np.swapaxes(att, 1, 2)[0]  # re-shape to no_frames, ch, W, H
-        sample_dir = os.path.join(base_res_dir, sample_name)
-        os.makedirs(sample_dir, exist_ok=True)
         att_clip = att_video_clip.squeeze(1).cpu().detach().numpy()
         raw_vid_clip = video.cpu().detach().numpy()
         if video_id not in video_clips:
@@ -154,13 +149,13 @@ def get_save_grad_cam_images(data_loader, model, device, subset='valid'):
         if args.save_video_clips:
             overlay_clip = [overlay(frame, np.expand_dims(att_frame, axis=0)) for (frame, att_frame) in
                             zip(raw_vid_clip, att_clip)]
-            vs = VideoSaver(title, overlay_clip, out_dir=args.out_dir + '_clip')
+            vs = VideoSaver(title, overlay_clip, out_dir=os.path.join(out_dir + '_clip', subset))
             vs.save_video()
         if args.show or args.save_frames:
             if args.save_frames:
-                out_dir = os.path.join(output_dir, str(video_id))
-                os.makedirs(out_dir, exist_ok=True)
-                print('saving frames to out_dir', out_dir)
+                out_frame_dir = os.path.join(out_dir + '_frames', str(video_id))
+                os.makedirs(out_frame_dir, exist_ok=True)
+                print('saving frames to out_dir', out_frame_dir)
             for i in range(len(video)):  # For each frame in current video-clip
                 img = video[i]
                 att_img = att_video_clip[i]
@@ -172,9 +167,7 @@ def get_save_grad_cam_images(data_loader, model, device, subset='valid'):
                     plt.show()
                 if args.save_frames:
                     x = overlay(img, att_img)
-                    cv2.imwrite(os.path.join(out_dir, title), x)
-        if args.zip:
-            os.system(f'zip -r {base_res_dir}.zip {base_res_dir}')
+                    cv2.imwrite(os.path.join(out_frame_dir, title), x)
     if args.save_video:
         save_all = args.corr_thres is None and args.wrong_thres is None
         good = args.corr_thres is not None
@@ -188,7 +181,7 @@ def get_save_grad_cam_images(data_loader, model, device, subset='valid'):
             if save_all or (good and ratio_corr >= args.corr_thres) or (bad and ratio_corr <= args.wrong_thresh):
                 true_label = clip_titles[0].split('-')[-1][:-4]
                 video_title = f'{video_id}-{ratio_corr:.2f}-{true_label}.jpg'
-                vs = VideoSaver(video_title, overlay_clips, out_dir=args.out_dir + '_video')
+                vs = VideoSaver(video_title, overlay_clips, out_dir=os.path.join(out_dir + '_video', subset))
                 vs.save_video()
 
 
