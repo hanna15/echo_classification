@@ -94,8 +94,7 @@ class EchoDataset(Dataset):
         if isinstance(view, list) and num_rand_frames is None and all_frames is None:
             print("Multiple views are only supported in conjunction with random frames or all frames,"
                   "not min/max frames - as those differ between views")
-        # self.views = view if isinstance(view, list) else [view]
-        self.views = view
+        self.views = view if isinstance(view, list) else [view]  # still ok to provide single view
         # self.frames = dict.fromkeys(self.views, [])
         self.frames = []
         self.targets = []
@@ -273,8 +272,8 @@ class EchoDataset(Dataset):
         :param sample: Sample from the file list paths.
         :return: (line regions, parsed program, sample name)
         """
-        if np.random.random() < 0.7:
-            return None, None, None
+        # if np.random.random() < 0.5:
+        #     return None, None, None
         views = self.views
         video_per_view = dict.fromkeys(self.views)
         for view in views:
