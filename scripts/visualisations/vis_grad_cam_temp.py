@@ -5,10 +5,9 @@ from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 from medcam import medcam
-from utils.transforms2 import get_transforms
-from utils.helpers import get_index_file_path
+from utils.transforms import get_transforms
+from utils.helpers import get_index_file_path, get_temp_model
 from echo_ph.data import EchoDataset
-from echo_ph.models.resnet_3d import get_resnet3d_18, get_resnet3d_50, Res3DSaliency
 from echo_ph.visual.video_saver import VideoSaver
 import cv2
 import matplotlib.cm as cm
@@ -24,7 +23,7 @@ parser = ArgumentParser(
     formatter_class=ArgumentDefaultsHelpFormatter)
 parser.add_argument('--model_path', default=None, help='set to path of a model state dict, to evaluate on. '
                                                        'If None, use resnet18 pretrained on Imagenet only.')
-parser.add_argument('--out_dir', default='grad_cam_3d', help='Name of directory storing the results')
+parser.add_argument('--out_dir', default='vis_3d', help='Name of directory storing the results')
 parser.add_argument('--model', default='r3d_18', choices=['r2plus1d_18', 'mc3_18', 'r3d_18', 'r3d_50',
                                                           'saliency_r3d_18'],
                     help='What model architecture to use.')
@@ -123,8 +122,7 @@ def overlay(raw_input, attention_map):
 
 
 def get_save_grad_cam_images(data_loader, model, device, subset='valid'):
-    out_dir = args.out_dir + '_' + args.vis_type
-    os.makedirs(out_dir, exist_ok=True)
+    out_dir = args.out_dir + '_' + args.vis_type + 'fold_' + str(args.fold)
     video_clips = {}
     for batch in data_loader:
         inp = batch['frame'][args.view].to(device).transpose(2, 1)  # Reshape to: (batch_size, channels, seq-len, W, H)
@@ -150,7 +148,8 @@ def get_save_grad_cam_images(data_loader, model, device, subset='valid'):
         if args.save_video_clips:
             overlay_clip = [overlay(frame, np.expand_dims(att_frame, axis=0)) for (frame, att_frame) in
                             zip(raw_vid_clip, att_clip)]
-            vs = VideoSaver(title, overlay_clip, out_dir=os.path.join(out_dir + '_clip', subset))
+            clip_out_dir = os.path.join(out_dir + '_clip', subset)
+            vs = VideoSaver(title, overlay_clip, out_dir=clip_out_dir)
             vs.save_video()
         if args.show or args.save_frames:
             if args.save_frames:
@@ -190,18 +189,14 @@ def main():
     if args.num_rand_samples is None and not args.all_frames:
         print('Must specify either number of random samples or set all_frames flag')
         exit()
+    if args.model_path is not None and not args.model_path.startswith('fold' + str(args.fold)):
+        print('Fold for getting data does not match fold of model')
+        exit()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     val_data_loader = get_data_loader()
     print("Done loading valid data")
     num_classes = 2 if args.label_type.startswith('2') else 3
-    if args.model == 'saliency_r3d_18':
-        model = Res3DSaliency(num_classes=num_classes, return_last=False).to(device)
-    elif args.model.endswith('18'):
-        model = get_resnet3d_18(num_classes=num_classes, model_type=args.model).to(device)
-    else:
-        model = get_resnet3d_50(num_classes=num_classes).to(device)
-    if args.model_path is not None:
-        model.load_state_dict(torch.load(args.model_path, map_location=device))
+    model = get_temp_model(args.model, num_classes, pretrained=True, device=device, return_last_saliency=False)
     # Instantiate model with grad cam & evaluate
     model = medcam.inject(model, return_attention=True, backend=args.vis_type)
     model.eval()
