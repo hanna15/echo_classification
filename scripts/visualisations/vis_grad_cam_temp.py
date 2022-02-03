@@ -189,8 +189,10 @@ def main():
     if args.num_rand_samples is None and not args.all_frames:
         print('Must specify either number of random samples or set all_frames flag')
         exit()
-    if args.model_path is not None and not args.model_path.startswith('fold' + str(args.fold)):
-        print('Fold for getting data does not match fold of model')
+    if args.model_path is not None:
+        model_name = os.path.basename(args.model_path)
+        if not model_name.startswith('fold' + str(args.fold)):
+            print('Fold for getting data does not match fold of model')
         exit()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     val_data_loader = get_data_loader()
