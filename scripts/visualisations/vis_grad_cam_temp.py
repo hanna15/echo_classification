@@ -127,7 +127,7 @@ def get_save_grad_cam_images(data_loader, model, device, subset='valid'):
     out_dir = f'{args.out_dir}{id}_{args.vis_type}_fold_{args.fold}'
     video_clips = {}
     for batch in data_loader:
-        inp = batch['frame'][args.view].to(device).transpose(2, 1)  # Reshape to: (batch_size, channels, seq-len, W, H)
+        inp = batch['frame']
         if len(args.view) == 1:  # single_view
             view = args.view[0]
             inp = inp[view].to(device).transpose(2, 1)  # Reshape to: (batch_size, channels, seq-len, W, H)
