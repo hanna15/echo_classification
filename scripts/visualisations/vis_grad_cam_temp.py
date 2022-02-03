@@ -25,7 +25,7 @@ parser.add_argument('--model_path', default=None, help='set to path of a model s
                                                        'If None, use resnet18 pretrained on Imagenet only.')
 parser.add_argument('--out_dir', default='vis_3d', help='Name of directory storing the results')
 parser.add_argument('--model', default='r3d_18', choices=['r2plus1d_18', 'mc3_18', 'r3d_18', 'r3d_50',
-                                                          'saliency_r3d_18'],
+                                                          'saliency_r3d_18','r3d_18_multi_view'],
                     help='What model architecture to use.')
 parser.add_argument('--label_type', default='2class_drop_ambiguous',
                     choices=['2class', '2class_drop_ambiguous', '3class'])
