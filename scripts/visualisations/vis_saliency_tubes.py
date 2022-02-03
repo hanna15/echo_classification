@@ -1,15 +1,10 @@
 import torch
-from torch import nn
 from echo_ph.visual.video_saver import VideoSaver
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from utils.transforms import get_transforms
 from echo_ph.data import EchoDataset
-import cv2
-from pytorch_grad_cam import GradCAM
-from pytorch_grad_cam.utils.image import show_cam_on_image
-from echo_ph.models.resnet_3d import get_resnet3d_18, Res3DSaliency
+from echo_ph.models.resnet_3d import Res3DSaliency
 import numpy as np
-from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 import os
 from utils.helpers import get_index_file_path
