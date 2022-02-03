@@ -128,6 +128,9 @@ def get_save_grad_cam_images(data_loader, model, device, subset='valid'):
     video_clips = {}
     for batch in data_loader:
         inp = batch['frame'][args.view].to(device).transpose(2, 1)  # Reshape to: (batch_size, channels, seq-len, W, H)
+        if len(args.view) == 1:  # single_view
+            view = args.view[0]
+            inp = inp[view].to(device).transpose(2, 1)  # Reshape to: (batch_size, channels, seq-len, W, H)
         sample_name = batch['sample_name'][0]
         video_id = int(sample_name.split('_')[0])
         label = batch['label'][0].item()
