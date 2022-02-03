@@ -193,7 +193,7 @@ def main():
         model_name = os.path.basename(args.model_path)
         if not model_name.startswith('fold' + str(args.fold)):
             print('Fold for getting data does not match fold of model')
-        exit()
+            exit()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     val_data_loader = get_data_loader()
     print("Done loading valid data")
