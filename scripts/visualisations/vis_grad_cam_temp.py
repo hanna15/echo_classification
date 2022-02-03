@@ -23,6 +23,7 @@ parser = ArgumentParser(
     formatter_class=ArgumentDefaultsHelpFormatter)
 parser.add_argument('--model_path', default=None, help='set to path of a model state dict, to evaluate on. '
                                                        'If None, use resnet18 pretrained on Imagenet only.')
+parser.add_argument('--id', default='', type=str, help='Identify this model / run, for the output name')
 parser.add_argument('--out_dir', default='vis_3d', help='Name of directory storing the results')
 parser.add_argument('--model', default='r3d_18', choices=['r2plus1d_18', 'mc3_18', 'r3d_18', 'r3d_50',
                                                           'saliency_r3d_18','r3d_18_multi_view'],
@@ -31,7 +32,7 @@ parser.add_argument('--label_type', default='2class_drop_ambiguous',
                     choices=['2class', '2class_drop_ambiguous', '3class'])
 parser.add_argument('--cache_dir', default='~/.heart_echo')
 parser.add_argument('--scale', default=0.25)
-parser.add_argument('--view', default='KAPAP')
+parser.add_argument('--view', nargs='+', type=str, default=['KAPAP'], help='What view (s) to use')
 parser.add_argument('--fold', default=0, type=int,
                     help='In case of k-fold cross-validation, set the current fold for this training.'
                          'Will be used to fetch the relevant k-th train and valid index file')
@@ -122,7 +123,8 @@ def overlay(raw_input, attention_map):
 
 
 def get_save_grad_cam_images(data_loader, model, device, subset='valid'):
-    out_dir = args.out_dir + '_' + args.vis_type + 'fold_' + str(args.fold)
+    id = 'None' if args.id == '' else '_' + args.id
+    out_dir = f'{args.out_dir}{id}_{args.vis_type}_fold_{args.fold}'
     video_clips = {}
     for batch in data_loader:
         inp = batch['frame'][args.view].to(device).transpose(2, 1)  # Reshape to: (batch_size, channels, seq-len, W, H)
