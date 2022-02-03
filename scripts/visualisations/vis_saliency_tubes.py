@@ -2,7 +2,7 @@ import torch
 from torch import nn
 from echo_ph.visual.video_saver import VideoSaver
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
-from utils.transforms2 import get_transforms
+from utils.transforms import get_transforms
 from echo_ph.data import EchoDataset
 import cv2
 from pytorch_grad_cam import GradCAM
@@ -22,6 +22,7 @@ parser = ArgumentParser(
     formatter_class=ArgumentDefaultsHelpFormatter)
 parser.add_argument('--model_path', default=None, help='set to path of a model state dict, to evaluate on. '
                                                        'If None, use resnet18 pretrained on Imagenet only.')
+parser.add_argument('--out_dir', default='vis_3d_saliency', help='Name of directory storing the results')
 parser.add_argument('--label_type', default='2class_drop_ambiguous',
                     choices=['2class', '2class_drop_ambiguous', '3class'])
 parser.add_argument('--cache_dir', default='~/.heart_echo')
@@ -77,6 +78,7 @@ def get_data_loader(train=False):
 
 
 def main():
+    out_dir = args.out_dir + '_fold_' + str(args.fold)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     num_classes = 2 if args.label_type.startswith('2') else 3
     model = Res3DSaliency(num_classes=num_classes, model_type='r3d_18')
@@ -94,7 +96,7 @@ def main():
         pred = torch.max(out, dim=1).indices[0].item()
         corr = 'CORR' if label == pred else 'WRONG'
 
-        # Get Grad-CAM
+        # Get Grad-CAM: Fetch weights of fc model, fetch last layer activations, multiply! Resize, norm,
         pred_weights = model.fc.weight.data.detach().cpu().numpy().transpose()
         layerout = layerout.detach().cpu()[0].numpy()  # remove batch part
         layerout = layerout.swapaxes(0, 3)  # I added this
@@ -129,18 +131,23 @@ def main():
         # produce heatmap and focusmap for every frame and activation map
         inp = inp.detach().cpu().numpy()[0]  # first one in the batch
         inp = inp.swapaxes(0, 1)  # no_frames, ch, w, h
-        os.makedirs('sal_tube_heatmap', exist_ok=True)
         heat_video = []
         for i in range(0, cam.shape[0]):
             curr_cam = cam[i]
             curr_img = inp[i]
             heatframe = overlay(curr_img, curr_cam)
-            # cv2.imwrite(os.path.join('sal_tube_heatmap', '{:03d}.png'.format(i)), heatframe)
             heat_video.append(heatframe)
         print(len(heat_video))
 
+        #for i in range(0, cam.shape[0]):
+        #    #   Create colourmap
+        #    heatmap = cv2.applyColorMap(np.uint8(255 * cam[i]), cv2.COLORMAP_JET)
+        #    # Create frame with heatmap
+        #    heatframe = (heatmap // 2) + (np.asarray(inp[i]).astype(np.uint8).transpose(1, 2, 0) // 2)
+        #    heat_video.append(heatframe)
+
         title = f'{sample_name}-{corr}-{label}.jpg'
-        vs = VideoSaver(title, heat_video, out_dir='sal_tube_heatmap' + '_video')
+        vs = VideoSaver(title, heat_video, out_dir=out_dir)
         vs.save_video()
 
 
