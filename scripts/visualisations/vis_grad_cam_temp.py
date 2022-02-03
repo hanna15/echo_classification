@@ -199,6 +199,8 @@ def main():
     print("Done loading valid data")
     num_classes = 2 if args.label_type.startswith('2') else 3
     model = get_temp_model(args.model, num_classes, pretrained=True, device=device, return_last_saliency=False)
+    if args.model_path is not None:
+        model.load_state_dict(torch.load(args.model_path, map_location=device))
     # Instantiate model with grad cam & evaluate
     model = medcam.inject(model, return_attention=True, backend=args.vis_type)
     model.eval()
