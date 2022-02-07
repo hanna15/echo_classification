@@ -220,9 +220,10 @@ def save_model_and_res(model, run_name, target_lst, pred_lst, val_target_lst, va
         np.save(os.path.join(res_dir, 'val_' + att_file_names), val_attention)
 
 
-def evaluate(model, valid_loader, valid_len, run_name, binary=False):
+def evaluate(model, device, valid_loader, valid_len, run_name, binary=False):
     print("Start evaluating on", valid_len, "validation samples")
     sm = torch.nn.Softmax(dim=-1)
+    model = model.load_state_dict(torch.load(args.model_name, map_location=device))
     model.eval()
     epoch_valid_targets = []
     epoch_valid_samples = []
@@ -475,7 +476,7 @@ def main():
                                   worker_init_fn=seed_worker, generator=g)
     valid_loader = DataLoader(valid_dataset, args.batch_size, shuffle=False, num_workers=num_workers)
     if args.load_model:
-        evaluate(model, valid_loader, len(valid_dataset), run_name, binary=binary)
+        evaluate(model, device, valid_loader, len(valid_dataset), run_name, binary=binary)
     else:
         train(model, train_loader, valid_loader, len(train_dataset), len(valid_dataset), tb_writer, run_name,
               optimizer, weights=class_weights, binary=binary, use_wandb=use_wandb)
