@@ -181,40 +181,69 @@ def save_model_and_res(model, run_name, target_lst, pred_lst, val_target_lst, va
     base_name = fold + run_name + epoch
 
     res_dir = os.path.join(BASE_RES_DIR, run_name, base_name)
-    model_dir = os.path.join(BASE_MODEL_DIR, run_name)
+
     os.makedirs(res_dir, exist_ok=True)
     if not os.path.exists(res_dir):  # Also add this, bc in cluster sometimes the other one is not working
         os.makedirs(res_dir)
-    os.makedirs(model_dir, exist_ok=True)
     model_file_name = base_name + '.pt'
     targ_file_name = 'targets.npy'
     pred_file_name = 'preds.npy'
     sample_file_names = 'samples.npy'
     att_file_names = 'attention.npy'
 
-
-    # Just before saving the model, delete older versions of the model and results, to save space
-    for model_file in os.listdir(model_dir):
-        # same model but different epoch
-        if model_file.split('_e')[0] == model_file_name.split('_e')[0]:
-            os.system(f'rm -r {os.path.join(model_dir, model_file)}')
-            res_dir_to_del = os.path.join(BASE_RES_DIR, run_name, model_file[:-3])
-            if os.path.exists(res_dir_to_del):
-                os.system(f'rm -r {res_dir_to_del}')
-    if args.multi_gpu:  # After wrapping the model in nn.DataParallel, original model will be accessible via model.module
-        torch.save(model.module.state_dict(), os.path.join(model_dir, model_file_name))
-    else:
-        torch.save(model.state_dict(), os.path.join(model_dir, model_file_name))
-    np.save(os.path.join(res_dir, 'train_' + targ_file_name), target_lst)
-    np.save(os.path.join(res_dir, 'train_' + pred_file_name), pred_lst)
-    np.save(os.path.join(res_dir, 'train_' + sample_file_names), sample_names)
-    np.save(os.path.join(res_dir, 'val_' + targ_file_name), val_target_lst)
-    np.save(os.path.join(res_dir, 'val_' + pred_file_name), val_pred_lst)
-    np.save(os.path.join(res_dir, 'val_' + sample_file_names), val_sample_names)
+    if model is not None:
+        model_dir = os.path.join(BASE_MODEL_DIR, run_name)
+        os.makedirs(model_dir, exist_ok=True)
+        # Just before saving the model, delete older versions of the model and results, to save space
+        for model_file in os.listdir(model_dir):
+            # same model but different epoch
+            if model_file.split('_e')[0] == model_file_name.split('_e')[0]:
+                os.system(f'rm -r {os.path.join(model_dir, model_file)}')
+                res_dir_to_del = os.path.join(BASE_RES_DIR, run_name, model_file[:-3])
+                if os.path.exists(res_dir_to_del):
+                    os.system(f'rm -r {res_dir_to_del}')
+        if args.multi_gpu:  # After wrapping the model in nn.DataParallel, original model will be accessible via model.module
+            torch.save(model.module.state_dict(), os.path.join(model_dir, model_file_name))
+        else:
+            torch.save(model.state_dict(), os.path.join(model_dir, model_file_name))
+    if target_lst is not None:
+        np.save(os.path.join(res_dir, 'train_' + targ_file_name), target_lst)
+        np.save(os.path.join(res_dir, 'train_' + pred_file_name), pred_lst)
+        np.save(os.path.join(res_dir, 'train_' + sample_file_names), sample_names)
+    if val_target_lst is not None:
+        np.save(os.path.join(res_dir, 'val_' + targ_file_name), val_target_lst)
+        np.save(os.path.join(res_dir, 'val_' + pred_file_name), val_pred_lst)
+        np.save(os.path.join(res_dir, 'val_' + sample_file_names), val_sample_names)
     if len(attention) > 0:
         np.save(os.path.join(res_dir, 'train_' + att_file_names), attention)
     if len(val_attention) > 0:
         np.save(os.path.join(res_dir, 'val_' + att_file_names), val_attention)
+
+
+def evaluate(model, valid_loader, valid_len, run_name, binary=False):
+    print("Start evaluating on", valid_len, "validation samples")
+    sm = torch.nn.Softmax(dim=-1)
+    model.eval()
+    epoch_valid_targets = []
+    epoch_valid_samples = []
+    epoch_valid_outs = []
+    epoch_valid_prob_1s = []
+    epoch_valid_attention = []
+    for valid_batch in valid_loader:
+        _, val_out, val_targets, val_sample_names, val_att = run_batch(valid_batch, model, None, binary)
+        epoch_valid_targets.extend(val_targets)
+        if val_att is not None:
+            epoch_valid_attention.append(val_att.cpu().detach().numpy())
+        epoch_valid_outs.extend(val_out.cpu().detach().numpy())
+        epoch_valid_prob_1s.extend(sm(val_out)[:, 1].cpu().detach().numpy())
+        targ_lst_valid = [t.item() for t in epoch_valid_targets]
+        epoch_valid_metrics = get_metrics_probs(epoch_valid_outs, epoch_valid_prob_1s, targ_lst_valid,
+                                                epoch_valid_samples, prefix='valid', binary=binary)
+        for metric in epoch_valid_metrics:
+            print(metric, ":", epoch_valid_metrics[metric])
+
+        save_model_and_res(None, run_name, None, None, targ_lst_valid, epoch_valid_outs, None, epoch_valid_samples,
+                           None, epoch_valid_attention, epoch=None, fold=args.fold)
 
 
 def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run_name, optimizer, weights=None,
@@ -437,23 +466,19 @@ def main():
             optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.wd)
         else:  # default, wd=0.02
             optimizer = optim.AdamW(model.parameters(), lr=args.lr)
-    if args.load_model:  # Create eval datasets (no shuffle) and evaluate model
-        eval_loader_train = DataLoader(train_dataset, args.batch_size, shuffle=False, num_workers=num_workers)
-        eval_loader_valid = DataLoader(valid_dataset, args.batch_size, shuffle=False, num_workers=num_workers)
-        model_name = run_name if args.model_name is None else args.model_name
-        # evaluate(model, model_name, eval_loader_train, eval_loader_valid) # TODO
-    else:  # Create training datasets (with shuffling or sampler) and train
-        if args.class_balance_per_epoch:
-            sampler = WeightedRandomSampler(train_dataset.example_weights, train_dataset.num_samples, generator=g)
-            train_loader = DataLoader(train_dataset, args.batch_size, shuffle=False, num_workers=num_workers,
-                                      sampler=sampler, worker_init_fn=seed_worker, generator=g)  # Sampler is mutually exclusive with shuffle
-        else:
-            train_loader = DataLoader(train_dataset, args.batch_size, shuffle=True, num_workers=num_workers,
-                                      worker_init_fn=seed_worker, generator=g)
-        valid_loader = DataLoader(valid_dataset, args.batch_size, shuffle=False, num_workers=num_workers)
-
-        train(model, train_loader, valid_loader, len(train_dataset), len(valid_dataset), tb_writer, run_name, optimizer,
-              weights=class_weights, binary=binary, use_wandb=use_wandb)
+    if args.class_balance_per_epoch:
+        sampler = WeightedRandomSampler(train_dataset.example_weights, train_dataset.num_samples, generator=g)
+        train_loader = DataLoader(train_dataset, args.batch_size, shuffle=False, num_workers=num_workers,
+                                  sampler=sampler, worker_init_fn=seed_worker, generator=g)  # Sampler is mutually exclusive with shuffle
+    else:
+        train_loader = DataLoader(train_dataset, args.batch_size, shuffle=True, num_workers=num_workers,
+                                  worker_init_fn=seed_worker, generator=g)
+    valid_loader = DataLoader(valid_dataset, args.batch_size, shuffle=False, num_workers=num_workers)
+    if args.load_model:
+        evaluate(model, valid_loader, len(valid_dataset), run_name, binary=binary)
+    else:
+        train(model, train_loader, valid_loader, len(train_dataset), len(valid_dataset), tb_writer, run_name,
+              optimizer, weights=class_weights, binary=binary, use_wandb=use_wandb)
 
 
 def seed_worker(worker_id):
