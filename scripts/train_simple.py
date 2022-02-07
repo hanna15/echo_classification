@@ -246,13 +246,8 @@ def evaluate(model, device, valid_loader, valid_len, run_name, binary=False):
         epoch_valid_outs.extend(val_out.cpu().detach().numpy())
         epoch_valid_prob_1s.extend(sm(val_out)[:, 1].cpu().detach().numpy())
         targ_lst_valid = [t.item() for t in epoch_valid_targets]
-        epoch_valid_metrics = get_metrics_probs(epoch_valid_outs, epoch_valid_prob_1s, targ_lst_valid,
-                                                epoch_valid_samples, prefix='valid', binary=binary)
-        for metric in epoch_valid_metrics:
-            print(metric, ":", epoch_valid_metrics[metric])
-
         save_model_and_res(None, run_name, None, None, targ_lst_valid, epoch_valid_outs, None, epoch_valid_samples,
-                           None, epoch_valid_attention, epoch=None, fold=args.fold)
+                           [], epoch_valid_attention, epoch=None, fold=args.fold)
 
 
 def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run_name, optimizer, weights=None,
