@@ -231,7 +231,7 @@ def evaluate(model, device, valid_loader, valid_len, run_name, binary=False):
                 break
     else:
         model_path = args.model_name
-    model = model.load_state_dict(torch.load(model_path, map_location=device))
+    model.load_state_dict(torch.load(model_path, map_location=device))
     model.eval()
     epoch_valid_targets = []
     epoch_valid_samples = []
