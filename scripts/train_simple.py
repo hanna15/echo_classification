@@ -223,7 +223,15 @@ def save_model_and_res(model, run_name, target_lst, pred_lst, val_target_lst, va
 def evaluate(model, device, valid_loader, valid_len, run_name, binary=False):
     print("Start evaluating on", valid_len, "validation samples")
     sm = torch.nn.Softmax(dim=-1)
-    model = model.load_state_dict(torch.load(args.model_name, map_location=device))
+    if os.path.isdir(args.model_name):
+        model_paths = os.listdir(args.model_name)
+        for path in model_paths:
+            if path.startswith('fold' + str(args.fold)):
+                model_path = path
+                break
+    else:
+        model_path = args.model_name
+    model = model.load_state_dict(torch.load(model_path, map_location=device))
     model.eval()
     epoch_valid_targets = []
     epoch_valid_samples = []
