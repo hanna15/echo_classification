@@ -227,7 +227,7 @@ def evaluate(model, device, valid_loader, valid_len, run_name, binary=False):
         model_paths = os.listdir(args.model_name)
         for path in model_paths:
             if path.startswith('fold' + str(args.fold)):
-                model_path = path
+                model_path = os.path.join(args.model_name, path)
                 break
     else:
         model_path = args.model_name
