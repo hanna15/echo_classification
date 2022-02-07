@@ -241,13 +241,14 @@ def evaluate(model, device, valid_loader, valid_len, run_name, binary=False):
     for valid_batch in valid_loader:
         _, val_out, val_targets, val_sample_names, val_att = run_batch(valid_batch, model, None, binary)
         epoch_valid_targets.extend(val_targets)
+        epoch_valid_samples.extend(val_sample_names)
         if val_att is not None:
             epoch_valid_attention.append(val_att.cpu().detach().numpy())
         epoch_valid_outs.extend(val_out.cpu().detach().numpy())
         epoch_valid_prob_1s.extend(sm(val_out)[:, 1].cpu().detach().numpy())
-        targ_lst_valid = [t.item() for t in epoch_valid_targets]
-        save_model_and_res(None, run_name, None, None, targ_lst_valid, epoch_valid_outs, None, epoch_valid_samples,
-                           [], epoch_valid_attention, epoch=None, fold=args.fold)
+    targ_lst_valid = [t.item() for t in epoch_valid_targets]
+    save_model_and_res(None, run_name, None, None, targ_lst_valid, epoch_valid_outs, None,
+                       epoch_valid_samples, [], epoch_valid_attention, epoch=None, fold=args.fold)
 
 
 def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run_name, optimizer, weights=None,
