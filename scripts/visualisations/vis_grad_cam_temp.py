@@ -233,8 +233,9 @@ def main():
     val_data_loader = get_data_loader()
     print("Done loading valid data")
     num_classes = 2 if args.label_type.startswith('2') else 3
+    return_last = True if args.vis_type == 'cam' else False
     model = get_temp_model(args.model, num_classes, pretrained=True, device=device,
-                           return_last_saliency=False, views=args.view)
+                           return_last_saliency=return_last, views=args.view)
     if args.model_path is not None:
         model.load_state_dict(torch.load(args.model_path, map_location=device))
     # Instantiate model with grad cam & evaluate
