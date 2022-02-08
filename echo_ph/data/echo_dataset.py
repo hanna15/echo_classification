@@ -134,7 +134,8 @@ class EchoDataset(Dataset):
                 #if frames_per_view is not None and label is not None and sample_names is not None:
                 # For multi-view in embedding space, only work with samples that have all views
                 if None not in [frames_per_view, label, sample_names] and len(frames_per_view) == len(self.views):
-                    no_frames = len(frames_per_view['KAPAP'])  # Base view
+                    first_view = frames_per_view.keys()[0]
+                    no_frames = len(frames_per_view[first_view])  # Base view ==> FIIIIX
                     # frames_per_view = np.swapaxes(frames_per_view, 0, 1)  # Shape: no_frames, no_views, ch, w, h
                     for frame_no in range(no_frames):
                         view_dict = {}
@@ -158,6 +159,7 @@ class EchoDataset(Dataset):
             self.example_weights = None
         else:
             self.example_weights = [self.class_weights[t] for t in self.targets]
+
         print(f'Loaded Dataset with {self.num_samples} samples in {t:.2f} seconds. Label distribution:')
         for label, cnt in zip(self.labels, cnts):  # Print number of occurrences of each label
             print(label, ':', cnt)
