@@ -161,20 +161,20 @@ def get_save_grad_cam_images(data_loader, model, device, subset='valid'):
         pred = torch.max(out, dim=1).indices[0].item()
         corr = 'CORR' if label == pred else 'WRONG'
         title = f'{sample_name}-{corr}-{label}.jpg'
+        video = np.swapaxes(inp, 1, 2)[0]  # re-shape to no_frames, ch, W, H
+        raw_vid_clip = video.cpu().detach().numpy()
         if args.vis_type == 'cam':
             att_clip = get_cam_saliency_tubes(model, att, label)
         else:
-            video = np.swapaxes(inp, 1, 2)[0]  # re-shape to no_frames, ch, W, H
             att_video_clip = np.swapaxes(att, 1, 2)[0]  # re-shape to no_frames, ch, W, H
             att_clip = att_video_clip.squeeze(1).cpu().detach().numpy()
-            raw_vid_clip = video.cpu().detach().numpy()
-            if video_id not in video_clips:
-                video_clips[video_id] = (att_clip, raw_vid_clip, [title])
-            else:
-                extended_attention = np.append(video_clips[video_id][0], att_clip, axis=0)
-                extended_video = np.append(video_clips[video_id][1], raw_vid_clip, axis=0)
-                extended_title = np.append(video_clips[video_id][2], title)
-                video_clips[video_id] = (extended_attention, extended_video, extended_title)
+        if video_id not in video_clips:
+            video_clips[video_id] = (att_clip, raw_vid_clip, [title])
+        else:
+            extended_attention = np.append(video_clips[video_id][0], att_clip, axis=0)
+            extended_video = np.append(video_clips[video_id][1], raw_vid_clip, axis=0)
+            extended_title = np.append(video_clips[video_id][2], title)
+            video_clips[video_id] = (extended_attention, extended_video, extended_title)
         if args.save_video_clips:
             overlay_clip = [overlay(frame, np.expand_dims(att_frame, axis=0)) for (frame, att_frame) in
                             zip(raw_vid_clip, att_clip)]
