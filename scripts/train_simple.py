@@ -97,7 +97,7 @@ def get_run_name():
     if len(args.view) > 1:
         run_name += '_multi_view'
     elif args.view[0] != 'KAPAP':
-            run_name += '_' + args.view
+            run_name += '_' + args.view[0]
     return run_name
 
 
