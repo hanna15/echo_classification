@@ -11,6 +11,7 @@ from echo_ph.data import EchoDataset
 from echo_ph.visual.video_saver import VideoSaver
 import cv2
 import matplotlib.cm as cm
+from scipy.ndimage import zoom
 
 """
 A script to create grad-cam visualisations on temporal models, either saving as frames or videos.
@@ -26,7 +27,7 @@ parser.add_argument('--model_path', default=None, help='set to path of a model s
 parser.add_argument('--id', default='', type=str, help='Identify this model / run, for the output name')
 parser.add_argument('--out_dir', default='vis_3d', help='Name of directory storing the results')
 parser.add_argument('--model', default='r3d_18', choices=['r2plus1d_18', 'mc3_18', 'r3d_18', 'r3d_50',
-                                                          'saliency_r3d_18','r3d_18_multi_view'],
+                                                          'saliency_r3d_18', 'r3d_18_multi_view'],
                     help='What model architecture to use.')
 parser.add_argument('--label_type', default='2class_drop_ambiguous',
                     choices=['2class', '2class_drop_ambiguous', '3class'])
@@ -40,7 +41,8 @@ parser.add_argument('--k', default=10, type=int,
                     help='In case of k-fold cross-validation, set the k, i.e. how many folds all in all. '
                          'Will be used to fetch the relevant k-th train and valid index file')
 parser.add_argument('--n_workers', default=8, type=int)
-parser.add_argument('--vis_type', default='gcam', choices=['gcam', 'gbp'], help='what visualis. type (backend) to use')
+parser.add_argument('--vis_type', default='gcam', choices=['gcam', 'gbp', 'cam'],
+                    help='what visualis. type (backend) to use')
 
 # Amount of samples / clips to pick
 parser.add_argument('--num_rand_samples', type=int, default=None,
@@ -119,11 +121,31 @@ def overlay(raw_input, attention_map):
     attention_map = cm.jet_r(attention_map)[..., :3].squeeze()
     attention_map = (attention_map.astype(float) + raw_input.astype(float)) / 2
     attention_map *= 255
+
     return attention_map.astype(np.uint8)
 
 
+def get_cam_saliency_tubes(model, layerout, label):
+    # Get Grad-CAM: Fetch weights of fc model, fetch last layer activations, multiply! Resize, norm,
+    pred_weights = model.fc.weight.data.detach().cpu().numpy().transpose()
+    layerout = layerout.detach().cpu()[0].numpy()  # remove batch part
+    layerout = layerout.swapaxes(0, 3)  # I added this
+    cam = np.zeros(dtype=np.float32, shape=layerout.shape[0:3])
+    for i, w in enumerate(pred_weights[:, label]):
+        cam += w * layerout[:, :, :, i]
+
+    # Resize CAM to frame level
+    cam = cam.swapaxes(1, 0)  # I added
+    cam = zoom(cam, (6, 16, 16))  # out cam is 2x14x14, so multiply by 6x16x16 to get 12x224z224 (out inp size)
+
+    # Normalize
+    cam -= np.min(cam)
+    cam /= np.max(cam) - np.min(cam)
+    return cam
+
+
 def get_save_grad_cam_images(data_loader, model, device, subset='valid'):
-    id = 'None' if args.id == '' else '_' + args.id
+    id = '' if args.id == '' else '_' + args.id
     out_dir = f'{args.out_dir}{id}_{args.vis_type}_fold_{args.fold}'
     video_clips = {}
     for batch in data_loader:
@@ -139,21 +161,25 @@ def get_save_grad_cam_images(data_loader, model, device, subset='valid'):
         pred = torch.max(out, dim=1).indices[0].item()
         corr = 'CORR' if label == pred else 'WRONG'
         title = f'{sample_name}-{corr}-{label}.jpg'
-        video = np.swapaxes(inp, 1, 2)[0]  # re-shape to no_frames, ch, W, H
-        att_video_clip = np.swapaxes(att, 1, 2)[0]  # re-shape to no_frames, ch, W, H
-        att_clip = att_video_clip.squeeze(1).cpu().detach().numpy()
-        raw_vid_clip = video.cpu().detach().numpy()
-        if video_id not in video_clips:
-            video_clips[video_id] = (att_clip, raw_vid_clip, [title])
+        if args.vis_type == 'cam':
+            att_clip = get_cam_saliency_tubes(model, att, label)
         else:
-            extended_attention = np.append(video_clips[video_id][0], att_clip, axis=0)
-            extended_video = np.append(video_clips[video_id][1], raw_vid_clip, axis=0)
-            extended_title = np.append(video_clips[video_id][2], title)
-            video_clips[video_id] = (extended_attention, extended_video, extended_title)
+            video = np.swapaxes(inp, 1, 2)[0]  # re-shape to no_frames, ch, W, H
+            att_video_clip = np.swapaxes(att, 1, 2)[0]  # re-shape to no_frames, ch, W, H
+            att_clip = att_video_clip.squeeze(1).cpu().detach().numpy()
+            raw_vid_clip = video.cpu().detach().numpy()
+            if video_id not in video_clips:
+                video_clips[video_id] = (att_clip, raw_vid_clip, [title])
+            else:
+                extended_attention = np.append(video_clips[video_id][0], att_clip, axis=0)
+                extended_video = np.append(video_clips[video_id][1], raw_vid_clip, axis=0)
+                extended_title = np.append(video_clips[video_id][2], title)
+                video_clips[video_id] = (extended_attention, extended_video, extended_title)
         if args.save_video_clips:
             overlay_clip = [overlay(frame, np.expand_dims(att_frame, axis=0)) for (frame, att_frame) in
                             zip(raw_vid_clip, att_clip)]
             clip_out_dir = os.path.join(out_dir + '_clip', subset)
+            print("save to folder", clip_out_dir)
             vs = VideoSaver(title, overlay_clip, out_dir=clip_out_dir)
             vs.save_video()
         if args.show or args.save_frames:
@@ -191,8 +217,12 @@ def get_save_grad_cam_images(data_loader, model, device, subset='valid'):
 
 
 def main():
+    # Argument checks
     if args.num_rand_samples is None and not args.all_frames:
         print('Must specify either number of random samples or set all_frames flag')
+        exit()
+    if args.vis_type == 'cam' and args.model != 'saliency_r3d_18':
+        print("In order to visualise with CAM, must have saliency model")
         exit()
     if args.model_path is not None:
         model_name = os.path.basename(args.model_path)
@@ -208,7 +238,8 @@ def main():
     if args.model_path is not None:
         model.load_state_dict(torch.load(args.model_path, map_location=device))
     # Instantiate model with grad cam & evaluate
-    model = medcam.inject(model, return_attention=True, backend=args.vis_type)
+    if args.vis_type != 'cam':
+        model = medcam.inject(model, return_attention=True, backend=args.vis_type)
     model.eval()
     get_save_grad_cam_images(val_data_loader, model, device, subset='valid')
     if args.train_set:
