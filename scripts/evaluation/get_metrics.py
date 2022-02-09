@@ -28,7 +28,7 @@ parser.add_argument('--plot_title',  type=str, default=None, nargs='+', help='ti
 parser.add_argument('--multi_class', action='store_true', help='Set this flag if not binary classification')
 
 
-def get_metrics_for_fold(fold_targets, fold_preds, fold_probs, fold_samples):
+def get_metrics_for_fold(fold_targets, fold_preds, fold_probs, fold_samples, outs):
     """
     Get / collect metrics corresponding to a single fold
     :param fold_targets: Ground truth labels
@@ -38,7 +38,8 @@ def get_metrics_for_fold(fold_targets, fold_preds, fold_probs, fold_samples):
     :return: results dictionary, video_wise_targets, video_wise_probs
     """
     binary = True if not args.multi_class else False
-    metrics = Metrics(fold_targets, fold_samples, preds=fold_preds, sm_probs=fold_probs, binary=binary, tb=False)
+    metrics = Metrics(fold_targets, fold_samples, model_outputs=outs, preds=fold_preds, sm_probs=fold_probs,
+                      binary=binary, tb=False)
     all_metrics = metrics.get_per_sample_scores()  # first get sample metrics only
     subject_metrics = metrics.get_per_subject_scores()  # then get subject metrics
     all_metrics.update(subject_metrics)  # finally update sample metrics dict with subject metrics, to get all metrics
@@ -75,14 +76,14 @@ def get_metrics_for_run(res_base_dir, run_name, out_dir, col, subset='val', get_
     fold_paths = [os.path.join(res_path, fold_path) for fold_path in sorted(os.listdir(res_path)) if
                   os.path.isdir(os.path.join(res_path, fold_path))]
     for fold_dir in fold_paths:
-        epoch = int(fold_dir.rsplit('_e', 1)[-1])
-        epochs.append(epoch)
-        fold_preds, fold_probs, fold_targets, fold_samples, _ = read_results(fold_dir, subset)
+        # epoch = int(fold_dir.rsplit('_e', 1)[-1])
+        # epochs.append(epoch)
+        fold_preds, fold_probs, fold_targets, fold_samples, outs = read_results(fold_dir, subset)
         if fold_preds is None:
             print(f'failed for model {os.path.basename(fold_dir)}')
             continue
         results, vid_targ, avg_prob, vid_pred, video_ids = get_metrics_for_fold(fold_targets, fold_preds, fold_probs,
-                                                                                fold_samples)
+                                                                                fold_samples, outs)
         for metric, val in results.items():
             metric_dict[metric].append(val)
 
@@ -190,7 +191,7 @@ def main():
 if __name__ == "__main__":
     args = parser.parse_args()
     if args.multi_class:
-        metric_list = ['Frame bACC', 'Video bACC', 'Video F1 (micro)', 'Video CI']
+       metric_list = ['Frame ROC_AUC', 'Frame bACC', 'Video ROC_AUC', 'Video bACC', 'Video F1 (micro)', 'Video CI']
     else:
         metric_list = ['Frame ROC_AUC', 'Frame bACC', 'Video ROC_AUC', 'Video bACC', 'Video F1 (micro)',
                        'Video F1, pos', 'Video F1, neg', 'Video CI']
