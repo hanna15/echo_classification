@@ -621,6 +621,8 @@ def get_transforms(
 def gen_masks(mask_fn, resize, orig_scale_fac, index_file_path, view='KAPAP'):
     # Get a mask for each patient
     print("Assembling echo masks.")
+    if not os.path.exists(os.path.dirname(mask_fn)):
+        os.mkdir(os.path.dirname(mask_fn))
     masks = {}
     p_ids = [str(id) + view for id in np.load(index_file_path)]
     results = []
