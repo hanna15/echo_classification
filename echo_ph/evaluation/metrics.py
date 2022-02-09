@@ -44,8 +44,11 @@ def get_metric_dict(targets, preds, probs=None, binary=True, subset='', prefix='
         else:  # For the Frame-wise, only report balanced accuracy.
             metrics = {prefix + 'bACC': b_acc}
 
-    if probs is not None and binary:  # Also get ROC_AUC score on probabilities, for binary classification
-        roc_auc = roc_auc_score(targets, probs)
+    if probs is not None:  # and binary:  # Also get ROC_AUC score on probabilities, for binary classification
+        if binary:
+            roc_auc = roc_auc_score(targets, probs)
+        else:
+            roc_auc = roc_auc_score(targets, probs, multi_class="ovo", average="macro")
         if tb:
             metrics.update({prefix + 'roc_auc' + '/' + subset: roc_auc})
         else:
@@ -91,7 +94,9 @@ def get_save_classification_report(targets, preds, file_name, metric_res_dir='re
     report = classification_report(targets, preds, output_dict=True)
     df = pd.DataFrame(report).transpose()
     df['support'] = df['support'].astype(int)
-    file_name = os.path.join(metric_res_dir, 'classification_reports', file_name)
+    cr_dir = os.path.join(metric_res_dir, 'classification_reports')
+    os.makedirs(cr_dir, exist_ok=True)
+    file_name = os.path.join(cr_dir, file_name)
     df.to_csv(file_name, float_format='%.2f')
     if epochs is not None:  # Add also epochs info
         with open(file_name, 'a') as f:
@@ -166,10 +171,14 @@ class Metrics():
         """
         Get softmax probabilities for the true class (PH) from model outputs (logits), in case of binary classification
         """
-        if torch.is_tensor(self.model_outputs):
-            self.sm_probs = self.soft_max(self.model_outputs)[:, 1]
+        out = self.model_outputs
+        if not torch.is_tensor(self.model_outputs):
+            out = torch.Tensor(out)
+        if self.binary:
+            self.sm_probs = self.soft_max(out)[:, 1]
         else:
-            self.sm_probs = self.soft_max(torch.Tensor(self.model_outputs))[:, 1]
+            self.sm_probs = self.soft_max(out)
+        self.sm_probs = [prob.cpu().detach().numpy() for prob in self.sm_probs]
         return self.sm_probs
 
     def get_preds(self):
@@ -191,7 +200,8 @@ class Metrics():
         """
         if self.preds is None:
             self.get_preds()
-        if self.binary and self.sm_probs is None:  # Also get ROC_AUC score on probabilities, for binary classification
+        # Also get ROC_AUC score on probabilities, for binary classification
+        if self.sm_probs is None:
             self.get_softmax_probs()
         prefix = '' if self.tb else 'Frame '
         return get_metric_dict(self.targets, self.preds, probs=self.sm_probs, binary=self.binary,
@@ -246,14 +256,12 @@ class Metrics():
                 res_per_video[vid_id]['pred'].append(pred)
                 if out is not None:
                     res_per_video[vid_id]['out'].append(out)
-                if self.binary:
-                    res_per_video[vid_id]['prob'].append(self.sm_probs[i])
+                res_per_video[vid_id]['prob'].append(self.sm_probs[i])
             else:
                 # (target, list of preds, list of raw outs)
                 out_lst = [out] if out is not None else None
                 res_per_video[vid_id] = {'target': target, 'pred': [pred], 'out': out_lst}
-                if self.binary:
-                    res_per_video[vid_id].update({'prob': [self.sm_probs[i]]})  # update dict with sm probs
+                res_per_video[vid_id].update({'prob': [self.sm_probs[i]]})  # update dict with sm probs
         return res_per_video
 
     def _set_subject_res_lists(self):
@@ -264,16 +272,18 @@ class Metrics():
         """
         if self.preds is None:
             self.get_preds()
-        if self.binary and self.sm_probs is None:
+        if self.sm_probs is None:
             self.get_softmax_probs()
         res_per_video = self._get_video_dict()
         targets_per_video = []
         preds_per_video = []
         video_confidance = []
         raw_outs_per_video = None if self.model_outputs is None else []
-        mean_probs_per_video = [] if self.binary else None
+        mean_probs_per_video = []
         for res in res_per_video.values():
             # Pick the most frequent label for the video (works with binary or multi-labels).
+            # if len(multimode(res['pred'])) > 1:
+            #     print(multimode(res['pred']), res['target'])
             video_pred = max(multimode(res['pred']))  # In case of a tie, pick the higher label (more PH)
             ratio_corr_pred = res['pred'].count(video_pred) / len(res['pred'])  # Count(corr_pred)/ Total len
             video_confidance.append(ratio_corr_pred)
@@ -283,6 +293,8 @@ class Metrics():
                 raw_outs_per_video.append(np.average(res['out'], axis=0))
             if self.binary:
                 mean_probs_per_video.append(np.mean(res['prob']))
+            else:
+                mean_probs_per_video.append(np.mean(res['prob'], axis=0))  # 1 prob for each class, but avg. over frames
         self.video_targets = targets_per_video
         self.video_preds = preds_per_video
         self.mean_probs_per_video = mean_probs_per_video
