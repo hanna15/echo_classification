@@ -291,7 +291,7 @@ class EchoDataset(Dataset):
                 curr_video_path = os.path.join(self.cache_dir, str(sample) + view + '.npy')  # TODO: Generalise
             if not os.path.exists(curr_video_path):
                 print(f'Skipping sample {sample}, as the video path {curr_video_path} does not exist')
-                return None, None, None
+                return None, None, None, None
             if self.segm_masks:  # Train only on segmentation mask frames
                 sample_w_ending = str(sample) + view
                 segm = SegmentationAnalyser(sample_w_ending,
