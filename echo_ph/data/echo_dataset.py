@@ -121,7 +121,7 @@ class EchoDataset(Dataset):
         self.view_to_segmodel_view = {  # When training on given view, what segmentation pretrained model view to use
             'KAPAP': 'psax',
             'KAAP': 'psax',  # although this view does not exactly match
-            'KAKL': 'psax', # although this view does not exactly match
+            'KAKL': 'psax',  # although this view does not exactly match
             'CV': 'a4c'
         }
         if index_file_path is not None:
@@ -129,8 +129,9 @@ class EchoDataset(Dataset):
         else:
             samples = video_ids
         t = time()
+        max_lens = []
         with mp.Pool(processes=procs) as pool:
-            for frames_per_view, label, sample_names in pool.map(self.load_sample, samples):
+            for frames_per_view, label, sample_names, max_len in pool.map(self.load_sample, samples):
                 #if frames_per_view is not None and label is not None and sample_names is not None:
                 # For multi-view in embedding space, only work with samples that have all views
                 if None not in [frames_per_view, label, sample_names] and len(frames_per_view) == len(self.views):
@@ -143,6 +144,7 @@ class EchoDataset(Dataset):
                         self.frames.append(view_dict)
                         self.targets.append(label)
                         self.sample_names.append(sample_names[frame_no])
+                        max_lens.append(max_len)
                     #for frame, sample_name in zip(frames_per_view, sample_names):
                         # frames is here actually a list of frames for each view
                         # self.frames.append(frame)
@@ -162,6 +164,8 @@ class EchoDataset(Dataset):
         print(f'Loaded Dataset with {self.num_samples} samples in {t:.2f} seconds. Label distribution:')
         for label, cnt in zip(self.labels, cnts):  # Print number of occurrences of each label
             print(label, ':', cnt)
+        print('avg max len', np.mean(max_lens))
+        print('std max len', np.std(max_lens))
 
     def get_frame_nrs(self, total_len):
         """
@@ -305,6 +309,7 @@ class EchoDataset(Dataset):
 
         # === Get frames for video, set total video len to the minimum length of all views ===
         if self.num_rand_frames or self.all_frames:
+            maax_len = len(video_per_view[view])
             total_len = min([len(video_per_view[view]) for view in video_per_view])  # the len will be the len of the shorter video
             frame_nrs = self.get_frame_nrs(total_len=total_len)
         else:  # Get max or min expansion frames, acc. to segmentation percentile
@@ -318,7 +323,6 @@ class EchoDataset(Dataset):
             frame_nrs = segm.extract_max_percentile_frames(percentile=self.max_percentile,
                                                            min_exp=self.min_expansion)
         sample_names = [str(sample) + '_' + str(frame_nr) for frame_nr in frame_nrs]
-
         frames_per_view = dict.fromkeys(self.views)
         for view in video_per_view:
             video = video_per_view[view]
@@ -330,7 +334,7 @@ class EchoDataset(Dataset):
         if sample not in all_labels:  # ATH! When proper index files used, this should not happen
             return None, None, None
         label = all_labels[sample]
-        return frames_per_view, label, sample_names
+        return frames_per_view, label, sample_names, maax_len
 
     def __len__(self):
         return self.num_samples
