@@ -1,7 +1,6 @@
 import numpy as np
 import os
 import pandas as pd
-import torch
 from sklearn.metrics import roc_curve
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from matplotlib import pyplot as plt
@@ -26,6 +25,7 @@ parser.add_argument('--train',  action='store_true', help='Set this flag to save
 parser.add_argument('--only_plot',  action='store_true', help='Set this flag to only plot ROC_AUC')
 parser.add_argument('--plot_title',  type=str, default=None, nargs='+', help='title of ROC_AUC plot, if not default')
 parser.add_argument('--multi_class', action='store_true', help='Set this flag if not binary classification')
+parser.add_argument('--out_type', type=str, default='csv', choices=['csv', 'latex'])
 
 
 def get_metrics_for_fold(fold_targets, fold_preds, fold_probs, fold_samples, outs):
@@ -120,7 +120,7 @@ def get_metrics_for_run(res_base_dir, run_name, out_dir, col, subset='val', get_
             get_save_classification_report(vid_targets_unique, vid_preds, f'{subset}_report_video_{run_name}.csv',
                                            metric_res_dir=out_dir, epochs=epochs)
         if get_confusion:
-            #get_save_confusion_matrix(targets, preds, f'{subset}_cm_{run_name}.csv', metric_res_dir=out_dir)
+            get_save_confusion_matrix(targets, preds, f'{subset}_cm_{run_name}.csv', metric_res_dir=out_dir)
             get_save_confusion_matrix(vid_targets_unique, vid_preds, f'{subset}_cm_video_{run_name}.csv',
                                       metric_res_dir=out_dir)
 
@@ -134,13 +134,16 @@ def get_metrics_for_run(res_base_dir, run_name, out_dir, col, subset='val', get_
         fpr1, tpr1, thresh1 = roc_curve(vid_targets, avg_softm_probs, pos_label=1, drop_intermediate=False)
         plt.plot(fpr1, tpr1, color=col, label=run_label)
 
-    ret = []
+    ret = [] if args.csv else ''
     for metric_values in metric_dict.values():
         mean = np.mean(metric_values)
         std = np.std(metric_values)
-        # metric_str = f'{mean:.2f} (std: {std:.2f})'
-        metric_str = f'& {mean:.2f} $\pm {std:.2f}$'
-        ret.append(metric_str)
+        if args.csv:
+            metric_str = f'{mean:.2f} (std: {std:.2f})'
+            ret.append(metric_str)
+        else:  # latex string
+            metric_str = f'& {mean:.2f} $\pm {std:.2f}$'
+            ret = ret + ' ' + metric_str
     return ret
 
 
@@ -161,8 +164,6 @@ def main():
     train_data = [[] for _ in range(no_runs)]  # list of lists, for each run
     colorMap = plt.get_cmap('jet', no_runs)
     for i, run_name in enumerate(all_runs):
-        #if run_name != 'TEMP_cl12_sp1r3d_18_adamw_lt_3.k10.lr_0.001.batch_8.wd_0.001.me_300multi_gpu_pre_aug4_balrand_n10':
-        #    continue
         col = colorMap(i/no_runs)
         out_name = None if args.out_names is None else args.out_names[i]
         res = get_metrics_for_run(res_dir, run_name, out_dir, col, get_clf_report=args.cr, get_confusion=args.cm,
@@ -194,11 +195,12 @@ def main():
 
 if __name__ == "__main__":
     args = parser.parse_args()
+    # Maybe have the metric_list as a parameter - depends on the use-case
+    metric_list = ['Video ROC_AUC (weighted)', 'Video F1 (weighted)', 'Video P (weighted)', 'Video R (weighted)',
+                   'Video bACC', 'Video CI']
     # metric_list = ['Frame ROC_AUC (macro)', 'Frame bACC', 'Video ROC_AUC (macro)', 'Video bACC', 'Video F1 (macro)',
     #                'Video P (macro)', 'Video ROC_AUC (weighted)', 'Video ACC', 'Video F1 (weighted)',
     #                'Video P (weighted)', 'Video R (weighted)', 'Video CI']
-    metric_list = ['Video ROC_AUC (weighted)', 'Video F1 (weighted)', 'Video P (weighted)', 'Video R (weighted)',
-                   'Video bACC', 'Video CI']
     # metric_list = ['Frame ROC_AUC (macro)', 'Frame ROC_AUC (weighted)', 'Frame bACC', 'Video ROC_AUC (macro)',
     #                'Video ROC_AUC (weighted)', 'Video bACC', 'Video ACC', 'Video F1 (micro)', 'Video F1 (macro)',
     #                'Video F1 (weighted)', 'Video P (micro)', 'Video P (macro)', 'Video P (weighted)',

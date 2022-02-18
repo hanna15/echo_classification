@@ -45,11 +45,11 @@ def get_metric_dict(targets, preds, probs=None, binary=True, subset='', prefix='
                        prefix + 'R (macro)': recall_score(targets, preds, average='macro'),
                        prefix + 'R (weighted)': recall_score(targets, preds, average='weighted'),
                        prefix + 'CI':  np.mean(conf)}
-            # if binary:
-            #     metrics.update(
-            #         {prefix + 'F1, pos': f1_score(targets, preds, average='binary'),
-            #          prefix + 'F1, neg': f1_score(targets, preds, pos_label=0, average='binary')}
-            #     )
+            if binary:
+                metrics.update(
+                    {prefix + 'F1, pos': f1_score(targets, preds, average='binary'),
+                     prefix + 'F1, neg': f1_score(targets, preds, pos_label=0, average='binary')}
+                )
         else:  # For the Frame-wise, only report balanced accuracy.
             metrics = {prefix + 'bACC': b_acc}
 
@@ -294,8 +294,6 @@ class Metrics():
         mean_probs_per_video = []
         for res in res_per_video.values():
             # Pick the most frequent label for the video (works with binary or multi-labels).
-            # if len(multimode(res['pred'])) > 1:
-            #     print(multimode(res['pred']), res['target'])
             video_pred = max(multimode(res['pred']))  # In case of a tie, pick the higher label (more PH)
             ratio_corr_pred = res['pred'].count(video_pred) / len(res['pred'])  # Count(corr_pred)/ Total len
             video_confidance.append(ratio_corr_pred)
