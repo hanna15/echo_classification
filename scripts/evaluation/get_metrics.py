@@ -85,7 +85,8 @@ def get_metrics_for_run(res_base_dir, run_name, out_dir, col, subset='val', get_
         results, vid_targ, avg_prob, vid_pred, video_ids = get_metrics_for_fold(fold_targets, fold_preds, fold_probs,
                                                                                 fold_samples, outs)
         for metric, val in results.items():
-            metric_dict[metric].append(val)
+            if metric in metric_dict:
+                metric_dict[metric].append(val)
 
         vid_targets.extend(vid_targ)
         vid_preds.extend(vid_pred)
@@ -119,7 +120,7 @@ def get_metrics_for_run(res_base_dir, run_name, out_dir, col, subset='val', get_
             get_save_classification_report(vid_targets_unique, vid_preds, f'{subset}_report_video_{run_name}.csv',
                                            metric_res_dir=out_dir, epochs=epochs)
         if get_confusion:
-            get_save_confusion_matrix(targets, preds, f'{subset}_cm_{run_name}.csv', metric_res_dir=out_dir)
+            #get_save_confusion_matrix(targets, preds, f'{subset}_cm_{run_name}.csv', metric_res_dir=out_dir)
             get_save_confusion_matrix(vid_targets_unique, vid_preds, f'{subset}_cm_video_{run_name}.csv',
                                       metric_res_dir=out_dir)
 
@@ -137,7 +138,8 @@ def get_metrics_for_run(res_base_dir, run_name, out_dir, col, subset='val', get_
     for metric_values in metric_dict.values():
         mean = np.mean(metric_values)
         std = np.std(metric_values)
-        metric_str = f'{mean:.2f} (std: {std:.2f})'
+        # metric_str = f'{mean:.2f} (std: {std:.2f})'
+        metric_str = f'& {mean:.2f} $\pm {std:.2f}$'
         ret.append(metric_str)
     return ret
 
@@ -159,6 +161,8 @@ def main():
     train_data = [[] for _ in range(no_runs)]  # list of lists, for each run
     colorMap = plt.get_cmap('jet', no_runs)
     for i, run_name in enumerate(all_runs):
+        #if run_name != 'TEMP_cl12_sp1r3d_18_adamw_lt_3.k10.lr_0.001.batch_8.wd_0.001.me_300multi_gpu_pre_aug4_balrand_n10':
+        #    continue
         col = colorMap(i/no_runs)
         out_name = None if args.out_names is None else args.out_names[i]
         res = get_metrics_for_run(res_dir, run_name, out_dir, col, get_clf_report=args.cr, get_confusion=args.cm,
@@ -190,11 +194,27 @@ def main():
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    if args.multi_class:
-       metric_list = ['Frame ROC_AUC', 'Frame bACC', 'Video ROC_AUC', 'Video bACC', 'Video F1 (micro)', 'Video CI']
-    else:
-        metric_list = ['Frame ROC_AUC', 'Frame bACC', 'Video ROC_AUC', 'Video bACC', 'Video F1 (micro)',
-                       'Video F1, pos', 'Video F1, neg', 'Video CI']
+    # metric_list = ['Frame ROC_AUC (macro)', 'Frame bACC', 'Video ROC_AUC (macro)', 'Video bACC', 'Video F1 (macro)',
+    #                'Video P (macro)', 'Video ROC_AUC (weighted)', 'Video ACC', 'Video F1 (weighted)',
+    #                'Video P (weighted)', 'Video R (weighted)', 'Video CI']
+    metric_list = ['Video ROC_AUC (weighted)', 'Video F1 (weighted)', 'Video P (weighted)', 'Video R (weighted)',
+                   'Video bACC', 'Video CI']
+    # metric_list = ['Frame ROC_AUC (macro)', 'Frame ROC_AUC (weighted)', 'Frame bACC', 'Video ROC_AUC (macro)',
+    #                'Video ROC_AUC (weighted)', 'Video bACC', 'Video ACC', 'Video F1 (micro)', 'Video F1 (macro)',
+    #                'Video F1 (weighted)', 'Video P (micro)', 'Video P (macro)', 'Video P (weighted)',
+    #                'Video R (micro)', 'Video R (macro)', 'Video R (weighted)', 'Video CI']
+    #if args.multi_class:
+       # metric_list = ['Frame ROC_AUC', 'Frame bACC', 'Video ROC_AUC', 'Video bACC', 'Video F1 (micro)', 'Video CI']
+    #else:
+        #metric_list = ['Frame ROC_AUC', 'Frame bACC', 'Video ROC_AUC', 'Video bACC', 'Video F1 (micro)',
+    #                   'Video F1, pos', 'Video F1, neg', 'Video CI']
     main()
+
+
+
+
+
+
+
 
 
