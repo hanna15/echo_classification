@@ -2,7 +2,7 @@ import os
 import torch
 import numpy as np
 from sklearn.metrics import f1_score, accuracy_score, balanced_accuracy_score, roc_auc_score, classification_report, \
-    confusion_matrix, mean_squared_error
+    confusion_matrix, mean_squared_error, precision_score, recall_score
 import pandas as pd
 import csv
 from statistics import multimode
@@ -25,8 +25,8 @@ def get_metric_dict(targets, preds, probs=None, binary=True, subset='', prefix='
     :return: Metrics directory with f1, accuracy, balanced accuracy (and roc-auc score, if probs is not None)
     """
     b_acc = balanced_accuracy_score(targets, preds)
+    acc = accuracy_score(targets, preds)
     if tb:  # Metric keys for tensor-board (i.e. during training)
-        acc = accuracy_score(targets, preds)
         metrics = {prefix + 'f1' + '/' + subset: f1_score(targets, preds, average='micro'),
                    prefix + 'accuracy' + '/' + subset: acc,
                    prefix + 'b-accuracy' + '/' + subset: b_acc,
@@ -34,25 +34,37 @@ def get_metric_dict(targets, preds, probs=None, binary=True, subset='', prefix='
     else:  # Metric keys for eval csv files
         if prefix.startswith('Video'):
             metrics = {prefix + 'F1 (micro)': f1_score(targets, preds, average='micro'),
+                       prefix + 'F1 (macro)': f1_score(targets, preds, average='macro'),
+                       prefix + 'F1 (weighted)': f1_score(targets, preds, average='weighted'),
                        prefix + 'bACC': b_acc,
+                       prefix + 'ACC': acc,
+                       prefix + 'P (micro)': precision_score(targets, preds, average='micro'),
+                       prefix + 'P (macro)': precision_score(targets, preds, average='macro'),
+                       prefix + 'P (weighted)': precision_score(targets, preds, average='weighted'),
+                       prefix + 'R (micro)': recall_score(targets, preds, average='micro'),
+                       prefix + 'R (macro)': recall_score(targets, preds, average='macro'),
+                       prefix + 'R (weighted)': recall_score(targets, preds, average='weighted'),
                        prefix + 'CI':  np.mean(conf)}
-            if binary:
-                metrics.update(
-                    {prefix + 'F1, pos': f1_score(targets, preds, average='binary'),
-                     prefix + 'F1, neg': f1_score(targets, preds, pos_label=0, average='binary')}
-                )
+            # if binary:
+            #     metrics.update(
+            #         {prefix + 'F1, pos': f1_score(targets, preds, average='binary'),
+            #          prefix + 'F1, neg': f1_score(targets, preds, pos_label=0, average='binary')}
+            #     )
         else:  # For the Frame-wise, only report balanced accuracy.
             metrics = {prefix + 'bACC': b_acc}
 
     if probs is not None:  # and binary:  # Also get ROC_AUC score on probabilities, for binary classification
         if binary:
-            roc_auc = roc_auc_score(targets, probs)
+            roc_auc = roc_auc_score(targets, probs, average="macro")
+            roc_auc_w = roc_auc_score(targets, probs, average="weighted")
         else:
             roc_auc = roc_auc_score(targets, probs, multi_class="ovo", average="macro")
+            roc_auc_w = roc_auc_score(targets, probs, multi_class="ovo", average="weighted")
         if tb:
             metrics.update({prefix + 'roc_auc' + '/' + subset: roc_auc})
         else:
-            metrics.update({prefix + 'ROC_AUC': roc_auc})
+            metrics.update({prefix + 'ROC_AUC (macro)': roc_auc})
+            metrics.update({prefix + 'ROC_AUC (weighted)': roc_auc_w})
     if regression:
         metrics.update({prefix + 'mse' + '/' + subset: mean_squared_error(targets, preds)})
     return metrics
