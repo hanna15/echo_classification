@@ -43,8 +43,10 @@ def get_metrics_for_fold(fold_targets, fold_preds, fold_probs, fold_samples, out
     all_metrics = metrics.get_per_sample_scores()  # first get sample metrics only
     subject_metrics = metrics.get_per_subject_scores()  # then get subject metrics
     all_metrics.update(subject_metrics)  # finally update sample metrics dict with subject metrics, to get all metrics
-    vid_targ, vid_pred, vid_avg_prob, vid_conf, vid_ids = metrics.get_subject_lists()
+    vid_targ, vid_pred, vid_avg_prob, vid_conf, vid_conf_corr, vid_conf_wrong, vid_ids = metrics.get_subject_lists()
     all_metrics.update({'Video CI':  np.mean(vid_conf)})
+    all_metrics.update({'Video Corr CI': np.mean(vid_conf_corr)})
+    all_metrics.update({'Video Wrong CI': np.mean(vid_conf_wrong)})
     return all_metrics, vid_targ, vid_avg_prob, vid_pred, vid_ids
 
 
@@ -134,11 +136,11 @@ def get_metrics_for_run(res_base_dir, run_name, out_dir, col, subset='val', get_
         fpr1, tpr1, thresh1 = roc_curve(vid_targets, avg_softm_probs, pos_label=1, drop_intermediate=False)
         plt.plot(fpr1, tpr1, color=col, label=run_label)
 
-    ret = [] if args.csv else ''
+    ret = [] if args.out_type == 'csv' else ''
     for metric_values in metric_dict.values():
         mean = np.mean(metric_values)
         std = np.std(metric_values)
-        if args.csv:
+        if args.out_type == 'csv':
             metric_str = f'{mean:.2f} (std: {std:.2f})'
             ret.append(metric_str)
         else:  # latex string
@@ -178,9 +180,15 @@ def main():
     else:
         df_names = [os.path.basename(run) for run in all_runs]
     if not args.only_plot:
-        df = pd.DataFrame(val_data, index=df_names, columns=metric_list)
+        if args.out_type == 'csv':
+            df = pd.DataFrame(val_data, index=df_names, columns=metric_list)
+        else: # args.out_type == 'latex'
+            df = pd.DataFrame(val_data, index=df_names)
         if args.train:
-            df_train = pd.DataFrame(train_data, index=df_names, columns=metric_list)
+            if args.out_type == 'csv':
+                df_train = pd.DataFrame(train_data, index=df_names, columns=metric_list)
+            else:  # args.out_type == 'latex'
+                df_train = pd.DataFrame(train_data, index=df_names)
             df = pd.concat([df, df_train], keys=['val', 'train'], axis=1)
         df.to_csv(os.path.join(out_dir, 'summary.csv'), float_format='%.2f')
 
@@ -197,7 +205,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     # Maybe have the metric_list as a parameter - depends on the use-case
     metric_list = ['Video ROC_AUC (weighted)', 'Video F1 (weighted)', 'Video P (weighted)', 'Video R (weighted)',
-                   'Video bACC', 'Video CI']
+                   'Video bACC', 'Video CI', 'Video Corr CI', 'Video Wrong CI']
     # metric_list = ['Frame ROC_AUC (macro)', 'Frame bACC', 'Video ROC_AUC (macro)', 'Video bACC', 'Video F1 (macro)',
     #                'Video P (macro)', 'Video ROC_AUC (weighted)', 'Video ACC', 'Video F1 (weighted)',
     #                'Video P (weighted)', 'Video R (weighted)', 'Video CI']

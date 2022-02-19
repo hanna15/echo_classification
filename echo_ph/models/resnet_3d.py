@@ -117,10 +117,20 @@ class Res3DSaliency(nn.Module):
 
 
 class Res3DMultiView(nn.Module):
-    def __init__(self, device, num_classes=2, model_type='r3d_18', views=['KAPAP', 'CV', 'LA'], pretrained=True):
+    def __init__(self, device, num_classes=2, model_type='r3d_18', views=['KAPAP', 'CV', 'LA'], pretrained=True,
+                 join_method='sum'):
+        """
+        :param device:
+        :param num_classes: 2 for binary, 3 for multi-class
+        :param model_type: The model type
+        :param views: The views to concat.
+        :param pretrained: If the model should be pre-trained.
+        :param join_method: What method to use to join features. Set to sum or concat.
+        """
         super(Res3DMultiView, self).__init__()
         self.dev = device
         self.views = views
+        self.method = join_method
         num_views = len(self.views)
         model = models.video.__dict__[model_type](pretrained=pretrained)
         in_channels = 1
@@ -131,7 +141,7 @@ class Res3DMultiView(nn.Module):
         self.fe_model = nn.Sequential(*list(model.children())[:-1])  # All but last layer
         self.fe_model_non_avg = nn.Sequential(*list(model.children())[:-2])  # All but last layer & but avg.pool
         self.avgpool = nn.AdaptiveAvgPool3d(output_size=(1, 1, 1))
-        # self.fc = nn.Linear(fc_in_ftrs * num_views, num_classes)
+        self.fc_concat = nn.Linear(fc_in_ftrs * num_views, num_classes)
         self.fc = nn.Linear(fc_in_ftrs, num_classes)
 
     def forward(self, x):
@@ -151,11 +161,18 @@ class Res3DMultiView(nn.Module):
             inp = x[view].transpose(2, 1).to(self.dev)
             ftrs = self.fe_model_non_avg(inp)
             all_features.append(ftrs)
-        # joined_ftrs = torch.cat(all_features, dim=1)
-        joined_ftrs = torch.stack(all_features, dim=0).sum(dim=0)  # Try to join features by summing instead of concatting
+        if self.join_method == 'concat':
+            joined_ftrs = torch.cat(all_features, dim=1)
+        elif self.join_method == 'sum':  # summing / stacking features
+            joined_ftrs = torch.stack(all_features, dim=0).sum(dim=0)
+        else:
+            print('Error - Join method not implemented.')
         ftrs = self.avgpool(joined_ftrs)
         ftrs = ftrs.view(ftrs.size(0), -1)
-        out = self.fc(ftrs)
+        if self.join_method == 'concat':
+            out = self.fc_concat(ftrs)
+        else: # sum
+            out = self.fc(ftrs)
         return out
 
 
