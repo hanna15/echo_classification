@@ -6,6 +6,14 @@ from echo_ph.models.conv_nets import ConvNet, SimpleConvNet
 
 
 def get_index_file_path(no_folds, curr_fold, label_type, train=True):
+    """
+    Get index file, with the samples to use for the given fold for given train/valid set.
+    :param no_folds: How many folds in total
+    :param curr_fold: What is the current fold number
+    :param label_type: 3class, 2class, etc.
+    :param train: If this is for training set.
+    :return: Path to the correct index file.
+    """
     idx_dir = 'index_files' if no_folds is None else os.path.join('index_files', 'k' + str(no_folds))
     idx_file_end = '' if curr_fold is None else '_' + str(curr_fold)
     idx_file_base_name = 'train_samples_' if train else 'valid_samples_'
@@ -14,9 +22,25 @@ def get_index_file_path(no_folds, curr_fold, label_type, train=True):
 
 
 def get_temp_model(model_type, num_classes, pretrained, device, views=None,
-                   self_att=False, map_att=False, size=256, cl=12, return_last_saliency=True):
+                   self_att=False, map_att=False, size=256, cl=12, return_last_saliency=True, join_method='sum'):
+    """
+    Get the correct model based on given parameters, for the temporal case.
+    :param model_type: Model type
+    :param num_classes: Number of classes
+    :param pretrained: True/False
+    :param device: Device
+    :param views: List of views for training this model.
+    :param self_att: Only relevant for attention-based model types.
+    :param map_att: Only relevant for attention-based model types.
+    :param size: Input frame size
+    :param cl: clip length
+    :param return_last_saliency: True if return last-layer from saliency model.
+    :param join_method: What method to use to join features, inc ase of multi-view model. Options: 'sum', 'concat'
+    :return: Model
+    """
     if model_type == 'r3d_18_multi_view':
-        model = Res3DMultiView(device, num_classes=num_classes, pretrained=pretrained, views=views)
+        model = Res3DMultiView(device, num_classes=num_classes, pretrained=pretrained, views=views,
+                               join_method=join_method)
     elif model_type == 'saliency_r3d_18':
         model = Res3DSaliency(num_classes=num_classes, pretrained=pretrained, return_last=return_last_saliency)
     elif model_type.endswith('18'):
@@ -33,6 +57,16 @@ def get_temp_model(model_type, num_classes, pretrained, device, views=None,
 
 
 def get_spatial_model(model_type, num_classes, pretrained, views, device, dropout):
+    """
+     Get the correct model based on given parameters, for the spatial case.
+    :param model_type: Model type
+    :param num_classes: Number of classes.
+    :param pretrained: True/False
+    :param views: List of views for training this model.
+    :param device: Device
+    :param dropout: If any dropout
+    :return:
+    """
     if model_type == 'resnet':
         model = get_resnet18(num_classes=num_classes, pretrained=pretrained).to(device)
     elif model_type == 'res_simple':
@@ -94,7 +128,7 @@ def set_arg_parse_all(description, regression=False):
 
     # Class imbalance
     parser.add_argument('--class_balance_per_epoch', action='store_true',
-                        help='set this flag to have ca. equal no. samples of each class per epoch / oversampling')
+                        hpytelp='set this flag to have ca. equal no. samples of each class per epoch / oversampling')
     parser.add_argument('--weight_loss', action='store_true',
                         help='set this flag to weight loss, according to class imbalance')
     # Training & models parameters
