@@ -177,6 +177,8 @@ class Metrics():
         self.mean_probs_per_video = None
         self.video_outs = None
         self.video_confidence = None
+        self.video_corr_confidence = None
+        self.video_wrong_confidence = None
         self.video_ids = None
 
     def get_softmax_probs(self):
@@ -242,7 +244,8 @@ class Metrics():
         """
         if self.video_targets is None:
             self._set_subject_res_lists()
-        ret = (self.video_targets, self.video_preds, self.mean_probs_per_video, self.video_confidence, self.video_ids)
+        ret = (self.video_targets, self.video_preds, self.mean_probs_per_video, self.video_confidence,
+               self.video_corr_confidence, self.video_wrong_confidence, self.video_ids)
         if raw_outputs:
             ret = ret + (self.video_outs,)
         return ret
@@ -290,12 +293,18 @@ class Metrics():
         targets_per_video = []
         preds_per_video = []
         video_confidance = []
+        video_corr_confidence = []
+        video_wrong_confidence = []
         raw_outs_per_video = None if self.model_outputs is None else []
         mean_probs_per_video = []
         for res in res_per_video.values():
             # Pick the most frequent label for the video (works with binary or multi-labels).
             video_pred = max(multimode(res['pred']))  # In case of a tie, pick the higher label (more PH)
             ratio_corr_pred = res['pred'].count(video_pred) / len(res['pred'])  # Count(corr_pred)/ Total len
+            if video_pred == res['target']:
+                video_corr_confidence.append(ratio_corr_pred)
+            else:
+                video_wrong_confidence.append(ratio_corr_pred)
             video_confidance.append(ratio_corr_pred)
             preds_per_video.append(video_pred)
             targets_per_video.append(res['target'])
@@ -310,6 +319,8 @@ class Metrics():
         self.mean_probs_per_video = mean_probs_per_video
         self.video_outs = raw_outs_per_video
         self.video_confidence = video_confidance
+        self.video_corr_confidence = video_corr_confidence
+        self.video_wrong_confidence = video_wrong_confidence
         self.video_ids = list(res_per_video.keys())
 
 
