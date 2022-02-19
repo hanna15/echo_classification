@@ -140,6 +140,8 @@ def set_arg_parse_all(description, regression=False):
                                                               'simple_conv', 'r2plus1d_18', 'mc3_18', 'r3d_18',
                                                               'r3d_18_multi_view', 'r3d_50', 'saliency_r3d_18'],
                         help='What model architecture to use. Note: r3d_50 is actually slow_fast (!)')
+    parser.add_argument('--join_method', default='sum', choices=['sum', 'concat'],
+                        help='What method to use to join features, relevant only in case of multi-view model.')
     parser.add_argument('--self_attention', action='store_true', help='If use self-attention (non-local block)')
     parser.add_argument('--map_attention', action='store_true', help='If use map-based attention')
     parser.add_argument('--dropout', type=float, default=0.5, help='Dropout value for those model who use dropout')
