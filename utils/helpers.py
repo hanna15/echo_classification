@@ -130,7 +130,7 @@ def set_arg_parse_all(description, regression=False):
 
     # Class imbalance
     parser.add_argument('--class_balance_per_epoch', action='store_true',
-                        hpytelp='set this flag to have ca. equal no. samples of each class per epoch / oversampling')
+                        help='set this flag to have ca. equal no. samples of each class per epoch / oversampling')
     parser.add_argument('--weight_loss', action='store_true',
                         help='set this flag to weight loss, according to class imbalance')
     # Training & models parameters
