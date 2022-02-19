@@ -64,7 +64,7 @@ def get_run_name():
         start = ''
     run_name = start + run_id + args.model + '_' + args.optimizer + '_lt_' + long_label_type_to_short[args.label_type] \
                + k + '.lr_' + str(args.lr) + '.batch_' + str(args.batch_size) + wd + '.me_' + str(args.max_epochs)
-    if args.model == 'r3d_18_multi_view':
+    if args.model.endswith('multi_view'):
         run_name += 'join_' + args.join_method
     if args.segm_masks:
         run_name += 'SEGM'
@@ -457,7 +457,8 @@ def main():
                                self_att=args.self_attention, map_att=args.map_attention, cl=args.clip_len,
                                join_method=args.join_method)
     else:
-        model = get_spatial_model(args.model, num_classes, args.pretrained, views, device, args.dropout)
+        model = get_spatial_model(args.model, num_classes, args.pretrained, views, device, args.dropout,
+                                  join_method=args.join_method)
     if args.multi_gpu:
         print("Training with multiple GPU")
         model = nn.DataParallel(model, dim=0)  # As we have batch-first

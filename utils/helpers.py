@@ -56,7 +56,7 @@ def get_temp_model(model_type, num_classes, pretrained, device, views=None,
     return model.to(device)
 
 
-def get_spatial_model(model_type, num_classes, pretrained, views, device, dropout):
+def get_spatial_model(model_type, num_classes, pretrained, views, device, dropout, join_method='sum'):
     """
      Get the correct model based on given parameters, for the spatial case.
     :param model_type: Model type
@@ -65,6 +65,7 @@ def get_spatial_model(model_type, num_classes, pretrained, views, device, dropou
     :param views: List of views for training this model.
     :param device: Device
     :param dropout: If any dropout
+    :param join_method: join_method
     :return:
     """
     if model_type == 'resnet':
@@ -74,7 +75,8 @@ def get_spatial_model(model_type, num_classes, pretrained, views, device, dropou
     elif model_type == 'conv':
         model = ConvNet(num_classes=num_classes, dropout_val=dropout).to(device)
     elif model_type == 'resnet2d_multi_view':
-        model = ResMultiView(device, num_classes=num_classes, pretrained=pretrained, views=views).to(device)
+        model = ResMultiView(device, num_classes=num_classes, pretrained=pretrained, views=views,
+                             join_method=join_method).to(device)
     else:
         model = SimpleConvNet(num_classes=num_classes).to(device)
     return model
