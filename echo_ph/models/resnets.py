@@ -126,7 +126,6 @@ class Bottleneck(nn.Module):
 
 
 class ResNet(nn.Module):
-
     def __init__(
         self,
         block: Type[Union[BasicBlock, Bottleneck]],
@@ -257,12 +256,26 @@ def _resnet(
 
 
 def resnet_simpler(num_classes, drop_prob, **kwargs: Any) -> ResNet:
+    """
+    Get a smaller version on Resnet18, for experimenting.
+    :param num_classes:
+    :param drop_prob:
+    :param kwargs:
+    :return:
+    """
     kwargs['num_classes'] = num_classes
     kwargs['drop_prob'] = drop_prob
     return _resnet(BasicBlock, [1, 1, 1, 1], **kwargs)
 
 
 def get_resnet18(num_classes=3, pretrained=True):
+    """
+    Get a Resnet-18 model (2D).
+    :param num_classes: 2 for binary classification or 3 for PH severity detection
+    :param model_type: One of r2plus1d_18, mc3_18, r3d_18
+    :param pretrained: True or False
+    :return: The model.
+    """
     model = resnet18(pretrained=pretrained)
     in_channels = 1  # Grayscale
     model.conv1 = nn.Conv2d(in_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
@@ -285,6 +298,7 @@ class ResMultiView(nn.Module):
         fc_in_ftrs = model.fc.in_features
         model.conv1 = nn.Conv2d(in_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
         self.fe_model = nn.Sequential(*list(model.children())[:-1])  # All but last layer
+        self.fe_model_non_avg = nn.Sequential(*list(model.children())[:-2])  # All but last layer & but avg.pool
         self.fc_concat = nn.Linear(fc_in_ftrs * num_views, num_classes)
         self.fc = nn.Linear(fc_in_ftrs, num_classes)
 
@@ -292,8 +306,7 @@ class ResMultiView(nn.Module):
         all_features = []
         for view in self.views:
             inp = x[view].to(self.dev)
-            ftrs = self.fe_model(inp)
-            ftrs = ftrs.view(ftrs.size(0), -1)
+            ftrs = self.fe_model_non_avg(inp)
             all_features.append(ftrs)
         if self.join_method == 'concat':
             joined_ftrs = torch.cat(all_features, dim=1)
@@ -301,6 +314,8 @@ class ResMultiView(nn.Module):
             joined_ftrs = torch.stack(all_features, dim=0).sum(dim=0)
         else:
             print('Error - Join method not implemented.')
+        ftrs = self.avgpool(joined_ftrs)
+        ftrs = ftrs.view(ftrs.size(0), -1)
         if self.join_method == 'concat':
             out = self.fc_concat(ftrs)
         else:  # sum
