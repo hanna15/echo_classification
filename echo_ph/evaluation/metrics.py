@@ -22,7 +22,7 @@ def get_metric_dict(targets, preds, probs=None, binary=True, subset='', prefix='
     :param tb: Set to true, if calculating metrics for tensorboard during training (has different metric keys)
     :param regression: Set to true, if add regression metrics
     :param conf: Video confidence (ratio of samples agreeing on correct label for a video)
-    :return: Metrics directory with f1, accuracy, balanced accuracy (and roc-auc score, if probs is not None)
+    :return: Metrics directory with various metrics.
     """
     b_acc = balanced_accuracy_score(targets, preds)
     acc = accuracy_score(targets, preds)
@@ -75,7 +75,7 @@ def read_results(res_dir, subset='val'):
     Read (get) results for model (preds, targets, samples) from numpy files
     :param res_dir: directory of model results
     :param subset: train or val
-    :return: list of model predictions, list of targets, list of sample names
+    :return: list of model predictions, softmax probabilities, targets, sample names, and raw model outputs
     """
     outs = np.load(os.path.join(res_dir, f'{subset}_preds.npy'))
     targets = np.load(os.path.join(res_dir, f'{subset}_targets.npy'))
@@ -142,17 +142,15 @@ class Metrics():
     def __init__(self, targets, samples, model_outputs=None, preds=None, sm_probs=None, binary=True, tb=True,
                  regression=False):
         """
+        :param targets: The targets / labels. Shape: (num_samples)
+        :param samples: The sample names. Shape: (num_samples)
         :param model_outputs: (Optional) The raw model outputs, i.e., un-normalized scores (logits), before softmax or
                               sigmoid. If model_outputs is not provided, must provide preds and sm_probs.
                               Shape: (num_samples, num_classes)
-        :param targets: The targets / labels. Shape: (num_samples)
         :param preds: (Optional) The model's actual predictions (arg-maxed output)
-        :param sm_probs: (Optional) The model's soft-maxed probabilities, for the class of interest (PH),for binary only.
-                                 ( Note: This is for the input to the roc_auc curve, as these are designed for binary
-                                 classifications where the input is the prob (from 0 - 1) of the positive class (PH).
-                                 In our case, as our output is one-hot encoded, I can't take sigmoid of a single output,
-                                 rather softmax of the classes, and pick out the softmax prob. relating to the PH class)
-        :param binary: If binary classification (because ROC_AUC is only defined for binary)
+        :param sm_probs: (Optional) The model's soft-maxed probabilities, for the class of interest (PH).
+                                    If not set, it will be calculated from model outputs.)
+        :param binary: If binary classification
         :param tb: Set to true if get these scores for tensorboard (metric dict looks different than during eval)
         """
         if preds is None and sm_probs is None:
@@ -183,7 +181,8 @@ class Metrics():
 
     def get_softmax_probs(self):
         """
-        Get softmax probabilities for the true class (PH) from model outputs (logits), in case of binary classification
+        Get softmax probabilities from model outputs (logits). In case of binary classification, get the probs
+        for the true class (PH), but in case of multi-class classification, get probs for each class.
         """
         out = self.model_outputs
         if not torch.is_tensor(self.model_outputs):
@@ -208,7 +207,7 @@ class Metrics():
     def get_per_sample_scores(self, subset=''):
         """
         Get scores (metrics) per sample / frame. Metrics calculated are f1-score, accuracy, balanced accuracy,
-        and ROC_AUC score in the case of binary classification.
+        and ROC_AUC score.
         :param subset: 'valid' or 'train' => for output dictionary
         :return: metrics dictionary, where key is metric and value is results / score.
         """
@@ -224,7 +223,7 @@ class Metrics():
     def get_per_subject_scores(self, subset=''):
         """
         Get scores (metrics) per subject / video - averaging over all the frames for that video.
-        Metrics calculated are f1-score, accuracy, balanced accuracy, (and ROC_AUC score for binary classification).
+        Metrics calculated are f1-score, accuracy, balanced accuracy, and ROC_AUC score.
         :param subset: 'valid' or 'train' => for output dictionary
         :return: metrics dictionary, where key is metric and value is results / score.
         """
@@ -237,10 +236,10 @@ class Metrics():
 
     def get_subject_lists(self, raw_outputs=False):
         """
-        Get prediction per subject / video (majority vote of the sample-wise predictions), and if binary classification,
-        also average soft-maxed prediction of the positive class per subject / video.
-         :param raw_outputs: Set to true, to also return raw video/subject outputs (not often desired)
-        :return: (targets, preds, mean_prob, confidence, ids, optionally output) => all per-video
+        Get and return subject-wise: targts, predictions, average soft-maxed predictions, total confidence,
+        confidence of corr predictions, confidence of wrong predictions, video ids, and optionally model outputs.
+        :param raw_outputs: Set to true, to also return raw video/subject outputs (not often desired)
+        :return: (targets, preds, mean_prob, confidence, corr conf, wrong conf, ids, optionally output) => all per-video
         """
         if self.video_targets is None:
             self._set_subject_res_lists()
@@ -281,8 +280,8 @@ class Metrics():
 
     def _set_subject_res_lists(self):
         """
-        Get list of targets per subject / video, predictions per subject / video (majority vote of frames),
-        and if binary classification, also avg soft-maxed prob per subject / video.
+        Get list of targets per subject, predictions per subject (majority vote of frames),
+        and avg soft-maxed prob per subject.
         :return:
         """
         if self.preds is None:
