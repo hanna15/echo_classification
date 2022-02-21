@@ -120,22 +120,19 @@ def get_save_classification_report(targets, preds, file_name, metric_res_dir='re
 def get_save_confusion_matrix(targets, preds, file_name, metric_res_dir='results'):
     """
     Get classification report for the given targets and predictions, and save it.
-    Furthermore, save the epoch that the model stopped training, if epochs is specified.
+    Columns are Predicted labels, Rows are True labels.
     :param targets: Ground truth labels
     :param preds: Model predicted labels
     :param file_name: Name of the resulting file
     :param metric_res_dir: Name of the base result directory
     """
-    tn, fp, fn, tp = confusion_matrix(targets, preds).ravel()
     cm_dir = os.path.join(metric_res_dir, 'confusion_matrix')
     os.makedirs(cm_dir, exist_ok=True)
     file_name = os.path.join(cm_dir, file_name)
-    with open(file_name, 'w') as f:
-        writer = csv.writer(f)
-        writer.writerow(['', '', 'True', 'True'])
-        writer.writerow(['', '', '1', '0'])
-        writer.writerow(['Predicted', '1', tp, fp])
-        writer.writerow(['Predicted', '0', fn, tn])
+
+    res = confusion_matrix(targets, preds)
+    df = pd.DataFrame(res)
+    df.to_csv(file_name)
 
 
 class Metrics():
@@ -321,6 +318,7 @@ class Metrics():
         self.video_corr_confidence = video_corr_confidence
         self.video_wrong_confidence = video_wrong_confidence
         self.video_ids = list(res_per_video.keys())
+
 
 
 
