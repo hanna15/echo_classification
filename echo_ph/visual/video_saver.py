@@ -4,6 +4,14 @@ import os
 
 class VideoSaver():
     def __init__(self, video_title, grad_cam_frames, out_dir='vis_videos', max_frames=50, fps=10):
+        """
+        Class to save spatio-temporal saliency maps as videos.
+        :param video_title: Title to save the video
+        :param grad_cam_frames: The saliency map sequence
+        :param out_dir: Directory to store the video
+        :param max_frames: If cut sequence at certain frame number
+        :param fps: frames per sec, for how slow or fast the video appears
+        """
         self.video_title = str(video_title)
         self.grad_cam_frames = grad_cam_frames
         self.max_frames = max_frames
