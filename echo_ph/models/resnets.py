@@ -300,6 +300,7 @@ class ResMultiView(nn.Module):
         self.fe_model = nn.Sequential(*list(model.children())[:-1])  # All but last layer
         self.fe_model_non_avg = nn.Sequential(*list(model.children())[:-2])  # All but last layer & but avg.pool
         self.fc_concat = nn.Linear(fc_in_ftrs * num_views, num_classes)
+        self.avgpool = nn.AdaptiveAvgPool2d(output_size=(1, 1))
         self.fc = nn.Linear(fc_in_ftrs, num_classes)
 
     def forward(self, x):
