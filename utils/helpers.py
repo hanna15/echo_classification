@@ -1,7 +1,7 @@
 import os
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from echo_ph.models.resnet_3d import Res3DMultiView, Res3DSaliency, Res3DAttention, get_resnet3d_50, get_resnet3d_18
-from echo_ph.models.resnets import get_resnet18, resnet_simpler, ResMultiView
+from echo_ph.models.resnets import get_resnet18, ResMultiView
 from echo_ph.models.conv_nets import ConvNet, SimpleConvNet
 
 
@@ -58,7 +58,7 @@ def get_temp_model(model_type, num_classes, pretrained, device, views=None,
 
 def get_spatial_model(model_type, num_classes, pretrained, views, device, dropout, join_method='sum'):
     """
-     Get the correct model based on given parameters, for the spatial case.
+    Get the correct model based on given parameters, for the spatial case.
     :param model_type: Model type
     :param num_classes: Number of classes.
     :param pretrained: True/False
@@ -70,8 +70,6 @@ def get_spatial_model(model_type, num_classes, pretrained, views, device, dropou
     """
     if model_type == 'resnet':
         model = get_resnet18(num_classes=num_classes, pretrained=pretrained).to(device)
-    elif model_type == 'res_simple':
-        model = resnet_simpler(num_classes=num_classes, drop_prob=dropout).to(device)
     elif model_type == 'conv':
         model = ConvNet(num_classes=num_classes, dropout_val=dropout).to(device)
     elif model_type == 'resnet2d_multi_view':
@@ -138,7 +136,7 @@ def set_arg_parse_all(description, regression=False):
                         help='Set this flag to load an already trained model to predict only, instead of training it.'
                              'If args.model_name is set, load model from that path. Otherwise, get model name acc. to'
                              'function get_run_name(), and load the corresponding model')
-    parser.add_argument('--model', default='resnet', choices=['resnet', 'resnet2d_multi_view', 'res_simple', 'conv',
+    parser.add_argument('--model', default='resnet', choices=['resnet', 'resnet2d_multi_view', 'conv',
                                                               'simple_conv', 'r2plus1d_18', 'mc3_18', 'r3d_18',
                                                               'r3d_18_multi_view', 'r3d_50', 'saliency_r3d_18'],
                         help='What model architecture to use. Note: r3d_50 is actually slow_fast (!)')
