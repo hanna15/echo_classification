@@ -1,12 +1,17 @@
 import torch
 from torch import nn
 from torchvision import models
-# from echo_ph.models.conv_lstm import ConvLSTM
 from echo_ph.models.non_local import NLBlockND, MapBasedAtt
 import os
 
 
 def get_resnet3d_50(num_classes=2, pretrained=True):
+    """
+    Get a slow 3D-CNN with resnet-50 backbone.
+    :param num_classes: 2 for binary classification or 3 for PH severity detection
+    :param pretrained: True or False
+    :return: The model.
+    """
     download_model_path = os.path.expanduser('~/.cache/torch/hub/facebookresearch_pytorchvideo_main')
     model = torch.hub.load(download_model_path, 'slow_r50', source='local', pretrained=pretrained)
     in_channels = 1  # Grayscale
@@ -17,21 +22,13 @@ def get_resnet3d_50(num_classes=2, pretrained=True):
     return model
 
 
-class Identity(nn.Module):
-    def __init__(self):
-        super(Identity, self).__init__()
-
-    def forward(self, x):
-        return x
-
-
-def get_resnet3d_18(num_classes=2, model_type='r2plus1d_18', pretrained=True):
+def get_resnet3d_18(num_classes=2, model_type='r3d_18', pretrained=True):
     """
-
-    :param num_classes: 2 or 3
+    Get a 3D-CNN with resnet-18 backbone, with different possible variations, as defined by model_type.
+    :param num_classes: 2 for binary classification or 3 for PH severity detection
     :param model_type: One of r2plus1d_18, mc3_18, r3d_18
     :param pretrained: True or False
-    :return:
+    :return: The model.
     """
     model = models.video.__dict__[model_type](pretrained=pretrained)
     in_channels = 1
@@ -41,32 +38,18 @@ def get_resnet3d_18(num_classes=2, model_type='r2plus1d_18', pretrained=True):
     return model
 
 
-   #layerout = h.detach().cpu()
-   #h = self.globalpool(h)
-   #h = h.view(h.shape[0], -1)
-   #h = self.classifier(h)
-   #return h, layerout
-
-# class DCNN3D_ConvLSTM(nn.Module):
-#     def __init__(self):
-#         super(DCNN3D_ConvLSTM, self).__init__()
-#         model = models.video.__dict__['r3d_18'](pretrained=True)
-#         in_channels = 1
-#         model.stem[0] = torch.nn.Conv3d(in_channels, model.stem[0].out_channels, kernel_size=(1, 7, 7),
-#                                         stride=(1, 2, 2),
-#                                         padding=(0, 3, 3), bias=False)
-#         self.cnn_3d = nn.Sequential(*[model.stem, model.layer1, model.layer2])
-#         self.conv_lstm = ConvLSTM(input_dim=3, hidden_dim=[64, 64, 128], kernel_size=(3, 3),
-#                                   num_layers=3, batch_first=True, bias=True, return_all_layers=False)
-#
-#     def forward(self, x):
-#         x = self.cnn_3d(x)
-#         x = self.conv_lstm(x)  # Input: A tensor of size B, T, C, H, W
-#         return x
-
-
 class Res3DAttention(nn.Module):
+    """ Get a 3D-CNN with resnet-18 backbone, with attention on time-step."""
     def __init__(self, num_classes=2, ch=1, w=112, h=112, t=6, att_type='self', pretrained=True):
+        """
+        :param num_classes: 2 for binary classification or 3 for PH severity detection
+        :param ch: Number of channels. Set 1 for grayscale, 3 for colour.
+        :param w: Width of frames
+        :param h: Height of frames
+        :param t: Sequence length
+        :param att_type: self or map-based.
+        :param pretrained: True or False
+        """
         super(Res3DAttention, self).__init__()
         model = models.video.__dict__['r3d_18'](pretrained=pretrained)
         in_channels = 1
@@ -90,7 +73,17 @@ class Res3DAttention(nn.Module):
 
 
 class Res3DSaliency(nn.Module):
+    """
+    Get 3D CNN model with resnet-18 backbone, specifically for CAM spatio-temporal saliency map
+    visualisation, i.e. returning the last convolutional output for visualisation.
+    """
     def __init__(self, num_classes=2, model_type='r3d_18', pretrained=True, return_last=True):
+        """
+        :param num_classes: 2 for binary classification, 3 for PH severity prediction.
+        :param model_type:  One of r2plus1d_18, mc3_18, r3d_18
+        :param pretrained: True if use pretrained model.
+        :param return_last: True if last conv layer should be returned - for visualisation
+        """
         super(Res3DSaliency, self).__init__()
         self.return_last = return_last
         model = models.video.__dict__[model_type](pretrained=pretrained)
@@ -99,11 +92,9 @@ class Res3DSaliency(nn.Module):
                                         stride=(1, 2, 2),
                                         padding=(0, 3, 3), bias=False)
         model.fc = torch.nn.Linear(model.fc.in_features, num_classes)
-        # model.fc = torch.nn.Linear( 512 * 2 * 14 * 14, num_classes)
         self.model_base = nn.Sequential(*[model.stem, model.layer1, model.layer2, model.layer3, model.layer4])
         self.avgpool = model.avgpool
         self.fc = model.fc
-        # self.model = model
 
     def forward(self, x):
         last_conv_out = self.model_base(x)
@@ -117,15 +108,18 @@ class Res3DSaliency(nn.Module):
 
 
 class Res3DMultiView(nn.Module):
+    """
+    Get 3D CNN model with resnet-18 backbone, for multi-view input.
+    """
     def __init__(self, device, num_classes=2, model_type='r3d_18', views=['KAPAP', 'CV', 'LA'], pretrained=True,
                  join_method='sum'):
         """
-        :param device:
+        :param device: Device.
         :param num_classes: 2 for binary, 3 for multi-class
         :param model_type: The model type
-        :param views: The views to concat.
+        :param views: The views to join in embedding space.
         :param pretrained: If the model should be pre-trained.
-        :param join_method: What method to use to join features. Set to sum or concat.
+        :param join_method: What method to use to join features. Set to 'sum' or 'concat'.
         """
         super(Res3DMultiView, self).__init__()
         self.dev = device
@@ -145,16 +139,6 @@ class Res3DMultiView(nn.Module):
         self.fc = nn.Linear(fc_in_ftrs, num_classes)
 
     def forward(self, x):
-        # all_features = []
-        # for view in self.views:
-        #     inp = x[view].transpose(2, 1).to(self.dev)
-        #     ftrs = self.fe_model(inp)
-        #     ftrs = ftrs.view(ftrs.size(0), -1)
-        #     all_features.append(ftrs)
-        # joined_ftrs = torch.cat(all_features, dim=1)
-        # out = self.fc(joined_ftrs)
-        # return out
-
         # Try concat first, then avg. pool
         all_features = []
         for view in self.views:
@@ -171,7 +155,7 @@ class Res3DMultiView(nn.Module):
         ftrs = ftrs.view(ftrs.size(0), -1)
         if self.join_method == 'concat':
             out = self.fc_concat(ftrs)
-        else: # sum
+        else:  # sum
             out = self.fc(ftrs)
         return out
 
