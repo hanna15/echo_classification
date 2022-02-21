@@ -168,6 +168,7 @@ class NLBlockND(nn.Module):
 
 
 if __name__ == '__main__':
+    # Just for testing
     import torch
 
     # Input shape:
@@ -175,22 +176,9 @@ if __name__ == '__main__':
     # (N, C, H, W) for dimension 2;
     # (N, C, T) for dimension 1
     for bn_layer in [True, False]:
-        # Note, for temporal-only, I could prob. resize (2, 3, 8, 20) [batch-size, channels, time-steps, H, W) to (2, 60, 8), i.e. [batch_size, rest, time_steps]
-        # => i.e. just put all the shit in the 'channels' dimension (!)
-        # img = torch.zeros(2, 3, 8)  # Input has shape (2, 3, 8) [batch-size, channels, time-steps], output has same shape
-        # net = NLBlockND(in_channels=3, mode='concatenate', dimension=1, bn_layer=bn_layer)
-        # out = net(img)
-        # print('output size, temporal', out.size())
-        #
-        # img = torch.zeros(2, 3, 20, 20)  # Input has shape (2, 3, 20, 20) [batch-size, channels, H, W), output has same shape
-        # net = NLBlockND(in_channels=3, mode='concatenate', dimension=2, bn_layer=bn_layer)
-        # out = net(img)
-        # print('output size, spatial', out.size())
-
-        img = torch.randn(2, 3, 8, 20,
-                          20)  # Input has shape (2, 3, 8, 20) [batch-size, channels, time-steps, H, W), output has same shape
-        net = NLBlockND(in_channels=3, mode='concatenate', dimension=3, bn_layer=bn_layer)
-        out = net(img)
-        print('output size, spatio-temporal', out.size())
+      img = torch.randn(2, 3, 8, 20, 20)  # Input has shape (2, 3, 8, 20) [batch-size, channels, time-steps, H, W), output has same shape
+    net = NLBlockND(in_channels=3, mode='concatenate', dimension=3, bn_layer=bn_layer)
+    out = net(img)
+    print('output size, spatio-temporal', out.size())
 
 
