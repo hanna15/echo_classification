@@ -4,78 +4,110 @@ import os
 import numpy as np
 import random
 from statistics import multimode
+
 """
-This script performs majority vote (ensemble) on models from different views.
+This script performs majority vote (ensemble) on models from different views, and reports the results.
+Also possible to do weighted average of output probabilities, as a comparison.
 """
 
 parser = ArgumentParser(
-    description='Analyse results from results files',
+    description='Get majority vote results of different views',
     formatter_class=ArgumentDefaultsHelpFormatter)
 parser.add_argument('base_dir', help='Path to the base directory where model files are stored')
 parser.add_argument('--res_files', help='Path to the results file of kapap view', nargs='+')
 parser.add_argument('--views', help='Path to the results file of kapap view', nargs='+')
 parser.add_argument('--disagree_method', default='conf', choices=['conf', 'random', 'max'],
                     help='What method to use to decide on a prediction when all models disagree')
+parser.add_argument('--prob_method', default='conf', choices=['mean', 'conf'],
+                    help='What method to use to decide on how to aggregate mean probabilities.'
+                         'Mean = take mean prob of all models selected'
+                         'Conf = take the prob of the most confident model, of those selected')
 parser.add_argument('--no_folds', type=int, default=10, help='Number of folds')
 parser.add_argument('--verbose', action='store_true',
                     help='set this flag to have more print statements')
+parser.add_argument('--method', default='mv', choices=['mv', 'avg'],
+                    help='What method to use to join view predictions. Default is majority vote (mv), but'
+                         'can also choose average of outputs weighted by conf (avg)')
 
 SEED = 0
 np.random.seed(SEED)
 random.seed(SEED)
 
 
-def majority_vote(pred_views, conf_views, method='random'):
+def weighted_avg(conf_views, mean_probs):
     """
-    :param pred_views: List of prediction for current subject, for all 3 views in order [kapap, kaap, cv]
-    :param conf_views: List of confidence for current subject, for all 3 views in order [kapap, kaap, cv]
-    :param method: Method to use to select a prediction when all models disagree. Choices: random, conf, max
+    Get multi view joint prediction, based on weighted average of output probabilities
+    :param conf_views: List of confidence for current subject, for all views.
+    :param mean_probs: List of mean model probabilities for current subject, for all views.
+    :return: The averaged prediction, associated confidence, and probabilities, as well as num models agreeing
+    """
+    indices = np.where(np.logical_not(np.isnan(conf_views)))[0]
+    joined_prob = np.average(mean_probs[indices], axis=0, weights=conf_views[indices])
+    joined_pred = np.argmax(joined_prob)
+    joined_conf = np.average(conf_views[indices])
+    all_models_disagree = False
+    return joined_pred, joined_conf, joined_prob, all_models_disagree
+
+
+def majority_vote(pred_views, conf_views, mean_probs, disagree_method='conf', prob_method='conf'):
+    """
+    :param pred_views: List of prediction for current subject, for all views.
+    :param conf_views: List of confidence for current subject, for all views.
+    :param mean_probs: List of mean model probabilities for current subject, for all views.
+    :param disagree_method: Method to use to select a prediction when all models disagree. Choices: random, conf, max.
                    random: Choose random prediction,
                    conf: Choose prediction associated to most confident model,
                    max: Choose the higher prediction (i.e. more severe)
-    :return: The majority vote prediction and associated confidence for curr video, as well as number of models agreeing
+    :param prob_method: Method to use to aggregate model probabilities, for ROC_AUC score.
+                    mean: Take mean output prob, of all selected model.
+                    conf: Take the probabilities of the most confident model of the selected ones.
+    :return: The majority vote prediction, associated confidence, and probabilities, as well as num models agreeing
     """
-    pred_views = [np.nan if pred is None else pred for pred in pred_views]  # None to np.nan
-    conf_views = [np.nan if pred is None else pred for pred in conf_views]  # None to np.nan
     mv_pred = multimode(pred_views)  # majority vote pred is set to most common class(es) predictions
-    mv_conf = np.nanmean(conf_views)  # for now, just set conf to mean of ALL (later change)
+    best_indexes = []
+    for mv_p in mv_pred:
+        b_idx = np.argwhere(pred_views == mv_p).squeeze(1)
+        best_indexes.extend(b_idx)
+    mv_conf = conf_views[best_indexes]
+    if prob_method == 'conf':
+        # Pick the probs of the most confident view, of the 'selected' views:
+        max_conf_idx = np.argmax(mv_conf)
+        idx = best_indexes[max_conf_idx]
+        mv_mean_probs = mean_probs[idx]
+    else:
+        mv_mean_probs = np.nanmean(mean_probs[best_indexes], axis=0)
+    mv_conf = np.nanmean(mv_conf)
     num_views = len(pred_views)
     no_unique_preds = len(set(pred_views))
-    num_models_agree = num_views if no_unique_preds == 1 else -1  # -1 is general
-    # MV gives a tie: In case of 3 models, only happens when all disagree
-    if len(mv_pred) > 1:
-        if no_unique_preds == no_unique_preds:  # All models disagree
-            num_models_agree = 0
-            if method == 'random':
-                best_idx = np.random.randint(num_views)
-                while np.isnan(pred_views[best_idx]):
-                    best_idx = np.random.randint(num_views)
-            elif method == 'conf':
-                best_idx = np.nanargmax(conf_views)  # max confidence
-            elif method == 'max':
-                best_idx = np.nanargmax(pred_views)  # max pred. value
-            else:
-                print('Select method as one of: [random, conf]')
-                exit()
-            mv_pred = pred_views[best_idx]
-            mv_conf = conf_views[best_idx]
-        else:  # Else 2 or more models agree on one label, 2 or more models on another label (only if > 3 views)
-            # In this case, just select higher prediction leave the confidence to the mean TODO: More sophisticated
-            num_models_agree = num_views - len(mv_pred)
-            mv_pred = np.nanmax(mv_pred)
-    else:
-        mv_pred = mv_pred[0]  # Only single prediction that is most common
-    return mv_pred, mv_conf, num_models_agree
+    all_models_disagree = (num_views == no_unique_preds)
+
+    # Only one label is the most common, select this one
+    if len(mv_pred) == 1:
+        return mv_pred[0], mv_conf, mv_mean_probs, all_models_disagree
+    # Else majority vote gives a tie, pick the results of the most confident model, or acc. to selected strategy
+    if disagree_method == 'conf':  # Default approach
+        best_idx = np.nanargmax(conf_views)  # max confidence
+    elif disagree_method == 'random':
+        best_idx = np.random.randint(num_views)
+        while np.isnan(pred_views[best_idx]):
+            best_idx = np.random.randint(num_views)
+    else:  # disagree_method == 'max':
+        best_idx = np.nanargmax(pred_views)  # max pred. value
+    mv_pred = pred_views[best_idx]
+    mv_conf = conf_views[best_idx]
+    return mv_pred, mv_conf, mv_mean_probs, all_models_disagree
 
 
 def main():
     args = parser.parse_args()
+    binary = True if 'binary' in args.base_dir else False
     no_folds = args.no_folds
     res_files = args.res_files  # [args.res_file_kapap, args.res_file_cv, args.res_file_la]
     res_paths = [os.path.join(args.base_dir, res_file) for res_file in res_files]
-    views = args.views  # ['kapap', 'cv', 'la']
-
-    all_res = {key: [] for key in ['Video bACC', 'Video F1 (micro)', 'Video CI']}
+    views = args.views
+    # define metrics of interest
+    all_res = {key: [] for key in ['Video ROC_AUC (weighted)', 'Video F1 (weighted)', 'Video P (weighted)',
+                                   'Video R (weighted)', 'Video bACC', 'Video CI']}
     cnt_all_disagree = 0
     for fold in range(0, no_folds):
         subj_pred_all_views = {}  # {'818': {'kapap':(pred, ci), 'kaap': (pred, ci)'}}
@@ -83,21 +115,24 @@ def main():
         joint_subj_preds = []
         joint_subj_targets = []
         joint_subj_conf = []
+        joint_subj_probs = []
         for res_path, view in zip(res_paths, views):
             fold_path = sorted(os.listdir(res_path))[fold]
             fold_dir = os.path.join(res_path, fold_path)
+            print(fold_dir)
             fold_preds, fold_probs, fold_targets, fold_samples, fold_outs = read_results(fold_dir)
             m = Metrics(fold_targets, fold_samples, model_outputs=fold_outs, preds=fold_preds,
-                        binary=False, tb=False)
-            subj_targets, subj_preds, _, subj_confs, subj_ids, subj_outs = m.get_subject_lists(raw_outputs=True)
-            for subj_id, subj_t, subj_p, subj_ci, subj_out in zip(subj_ids, subj_targets, subj_preds, subj_confs,
-                                                                  subj_outs):
+                        binary=binary, tb=False)
+            subj_targets, subj_preds, subj_mean_probs, subj_confs, corr_conf, wrong_conf, subj_ids, subj_outs = \
+                m.get_subject_lists(raw_outputs=True)
+            for subj_id, subj_t, subj_p, subj_mp, subj_ci, subj_out in zip(subj_ids, subj_targets, subj_preds,
+                                                                           subj_mean_probs, subj_confs, subj_outs):
                 # Match video-ids from different views
                 if subj_id in subj_pred_all_views:
-                    subj_pred_all_views[subj_id][view] = (subj_p, subj_ci, subj_out)
+                    subj_pred_all_views[subj_id][view] = (subj_p, subj_ci, subj_out, subj_mp)
                 else:
                     subj_pred_all_views[subj_id] = {}
-                    subj_pred_all_views[subj_id][view] = (subj_p, subj_ci, subj_out)
+                    subj_pred_all_views[subj_id][view] = (subj_p, subj_ci, subj_out, subj_mp)
                 if subj_id not in subj_targ_all_views:
                     subj_targ_all_views[subj_id] = subj_t
 
@@ -106,40 +141,57 @@ def main():
             'Not all views available for all videos'
             preds_all_views = []
             conf_all_views = []
+            mean_prob_all_views = []
             for view in views:
                 if view in subj_pred_all_views[key]:
-                    pred, conf, _ = subj_pred_all_views[key][view]
+                    pred, conf, _, mp = subj_pred_all_views[key][view]
                 else:
-                    pred = conf = None
+                    pred = conf = np.nan
+                    mp = np.nan if binary else np.full(3, np.nan)
                 preds_all_views.append(pred)
                 conf_all_views.append(conf)
+                mean_prob_all_views.append(mp)
 
             # Calculate majority vote for the current model
             target = subj_targ_all_views[key]
-            joint_pred, joint_ci, num_views_agree = majority_vote(preds_all_views, conf_all_views, method='conf')
-            if num_views_agree == 0:
+            if args.method == 'mv': # majority vote
+                joint_pred, joint_ci, joint_prob, all_disagree = majority_vote(np.asarray(preds_all_views),
+                                                                           np.asarray(conf_all_views),
+                                                                           np.asarray(mean_prob_all_views),
+                                                                           disagree_method=args.disagree_method,
+                                                                           prob_method=args.prob_method)
+            else:  # weighted average
+                joint_pred, joint_ci, joint_prob, all_disagree = weighted_avg(np.asarray(conf_all_views),
+                                                                               np.asarray(mean_prob_all_views))
+            if all_disagree:
                 cnt_all_disagree += 1
-            if args.verbose and num_views_agree == 3 and joint_pred != target:
+            if args.verbose and all_disagree and joint_pred != target:
                 print(f'All models wrong for: subj id {key}')
                 print(f't={target}, p={joint_pred}, all_preds: {preds_all_views}, all confs: {conf_all_views}')
 
             joint_subj_preds.append(joint_pred)
             joint_subj_conf.append(joint_ci)
             joint_subj_targets.append(subj_targ_all_views[key])  # target is always the same
+            joint_subj_probs.append(joint_prob)
 
-        subj_res = get_metric_dict(joint_subj_targets, joint_subj_preds, probs=None, binary=False, subset='val',
-                                   prefix='Video ', tb=False, conf=joint_subj_conf)
+        subj_res = get_metric_dict(joint_subj_targets, joint_subj_preds, probs=joint_subj_probs, binary=binary,
+                                   subset='val', prefix='Video ', tb=False, conf=joint_subj_conf)
         for metric, val in subj_res.items():
-            all_res[metric].append(val)
+            if metric in all_res:
+                all_res[metric].append(val)
 
     if args.verbose:
         print('no. videos where all disagree (aggregated over all folds)', cnt_all_disagree)
 
+    latex_metric_str = ''
     for metric, metric_values in all_res.items():
         mean = np.mean(metric_values)
         std = np.std(metric_values)
         metric_str = f'{mean:.2f} (std: {std:.2f})'
-        print(metric, ':', metric_str)
+        print(metric, ":", metric_str)
+        latex_metric_str += f'& {mean:.2f} $\pm {std:.2f}$'
+    print("Latex results")
+    print(latex_metric_str)
 
 
 if __name__ == '__main__':

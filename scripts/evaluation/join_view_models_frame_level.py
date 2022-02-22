@@ -2,28 +2,27 @@ from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from echo_ph.evaluation.metrics import read_results, Metrics
 import os
 import numpy as np
+
 """
-This script gets results from models of different views, by joining the frame-level prediction, before concatenating
-for subject-level prediction.
+This script gets results from models of different views, by joining the frame-level prediction, 
+before concatenating for subject-level prediction.
 """
 
 parser = ArgumentParser(
-    description='Analyse results from results files',
+    description='Join frame-level predictions, and get metrics',
     formatter_class=ArgumentDefaultsHelpFormatter)
 parser.add_argument('base_dir', help='Path to the base directory where model files are stored')
 parser.add_argument('--res_files', help='Path to the results file of kapap view', nargs='+')
 parser.add_argument('--views', help='Path to the results file of kapap view', nargs='+')
-parser.add_argument('--disagree_method', default='conf', choices=['conf', 'random', 'max'],
-                    help='What method to use to decide on a prediction when all models disagree')
 parser.add_argument('--no_folds', type=int, default=10, help='Number of folds')
 
 
 def main():
     args = parser.parse_args()
     no_folds = args.no_folds
-    res_files = args.res_files  # [args.res_file_kapap, args.res_file_cv, args.res_file_la]
+    res_files = args.res_files
     res_paths = [os.path.join(args.base_dir, res_file) for res_file in res_files]
-    views = args.views  # ['kapap', 'cv', 'la']
+    views = args.views
     all_res = {key: [] for key in ['Video bACC', 'Video F1 (micro)', 'Video CI']}
     for fold in range(0, no_folds):
         print('fold', fold)
