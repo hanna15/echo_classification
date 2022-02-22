@@ -56,7 +56,6 @@ class CropToCorners():
     """
     Crop echo to have the its four corners at the border
     """
-
     def _get_masks(self):
         mask_fn = get_mask_fn(self.mask_path, -1, self.orig_img_scale, self.label_type, self.fold)
         if not os.path.exists(mask_fn):
