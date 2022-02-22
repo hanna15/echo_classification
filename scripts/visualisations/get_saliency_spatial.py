@@ -28,6 +28,7 @@ parser.add_argument('--label_type', default='2class_drop_ambiguous',
 parser.add_argument('--cache_dir', default='~/.heart_echo')
 parser.add_argument('--scale', default=0.25)
 parser.add_argument('--view', default='KAPAP')
+parser.add_argument('--img_size', type=int, default=224, help='Size that frames are resized to')
 parser.add_argument('--fold', default=0, type=int,
                     help='In case of k-fold cross-validation, set the current fold for this training.'
                          'Will be used to fetch the relevant k-th train and valid index file')
@@ -46,46 +47,53 @@ parser.add_argument('--all_frames', action='store_true', default=None,
 parser.add_argument('--max_frame', type=int, default=50,
                     help='Only valid in combination with all_frames flag. '
                          'Get sequential frames of a video from frame 0, but limit len to max_frame')
-parser.add_argument('--crop', action='store_true', help='If crop to corners')
-parser.add_argument('--save_frames', action='store_true', help='If to save grad cam images on a frame-level')
+parser.add_argument('--save_frames', action='store_true', help='If save grad cam images on a frame-level')
 parser.add_argument('--save_video', action='store_true', help='If also to save video visualisations')
 parser.add_argument('--show', action='store_true', help='If to show grad cam images')
 parser.add_argument('--train_set', action='store_true', help='Also get grad cam for the images in the training set, '
                                                              'with random augmentation (type 3)')
 parser.add_argument('--segm_only', action='store_true', help='Only evaluate on the segmentation masks')
-parser.add_argument('--video_ids', default=None, nargs='+', type=int, help='Instead of getting results acc.to index file, '
-                                                                 'get results for specific video ids')
-parser.add_argument('--dynamic', action='store_true', help='If run on dynamic dataset')
+parser.add_argument('--video_ids', default=None, nargs='+', type=int,
+                    help='Instead of getting results acc.to index file, get results for specific video ids')
 
 
 def get_data_loader(train=False):
-    if args.dynamic:
-        index_file_path = os.path.join('index_files', 'dynamic_test_index.npy')
-    elif args.video_ids is None:
+    """
+    Get data loader for sptial data.
+    :param train: True if training data loader
+    :return: data loader
+    """
+    if args.video_ids is None:
         index_file_path = get_index_file_path(args.k, args.fold, args.label_type, train=train)
     else:
         index_file_path = None
-    if args.dynamic:
-        label_path = os.path.join('label_files', 'dynamic_test_labels.pkl')
-    else:
-        label_path = os.path.join('label_files', 'labels_' + args.label_type + '.pkl')
-    aug_type = 5 if train else 0
-    dyn = False
-    transforms = get_transforms(index_file_path, dataset_orig_img_scale=args.scale, resize=224,
+    label_path = os.path.join('label_files', 'labels_' + args.label_type + '.pkl')
+    aug_type = 4 if train else 0
+    transforms = get_transforms(index_file_path, dataset_orig_img_scale=args.scale, resize=args.img_size,
                                 augment=aug_type, fold=args.fold, valid=(not train), view=args.view,
                                 crop_to_corner=args.crop, segm_mask_only=args.segm_only)
     dataset = EchoDataset(index_file_path, label_path, cache_dir=args.cache_dir,
                           transform=transforms, scaling_factor=args.scale, procs=args.n_workers,
                           percentile=args.max_p, view=args.view, min_expansion=args.min_expansion,
                           num_rand_frames=args.num_rand_frames, segm_masks=args.segm_only, video_ids=args.video_ids,
-                          all_frames=args.all_frames, max_frame=args.max_frame, dynamic=dyn)
+                          all_frames=args.all_frames, max_frame=args.max_frame)
     data_loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=args.n_workers)
     return data_loader
 
 
-def get_save_grad_cam_images(data_loader, model, cam, device, subset='valid'):
+def visualise_save_saliency_frames(data_loader, model, saliency_map, device, subset='valid'):
+    """
+    Get the saliency map of choice, overlay it with original ECHO and save or visualise the resulting frames.
+    :param data_loader: Data loader
+    :param model: Model
+    :param saliency_map: The raw saliency map
+    :param device: Device
+    :param subset: valid or train
+    :return:
+    """
     target_category = None
     if args.save_frames or args.save_video:
+        # prepare output directory
         model_name = os.path.basename(args.model_path)[:-3]
         output_dir = os.path.join('grad_cam_vis', model_name, subset)
         os.makedirs(output_dir, exist_ok=True)
@@ -99,8 +107,8 @@ def get_save_grad_cam_images(data_loader, model, cam, device, subset='valid'):
         pred = torch.max(model(img), dim=1).indices[0].item()
         corr = 'CORR' if label == pred else 'WRONG'
         title = f'{sample_name}-{corr}-{label}.jpg'
-        grayscale_cam = cam(input_tensor=img,
-                            target_category=target_category)
+        grayscale_cam = saliency_map(input_tensor=img,
+                                     target_category=target_category)
         img = np.stack((img.squeeze().cpu(),) * 3, axis=-1)  # create a 3-channel image from the grayscale img
         try:
             cam_image = show_cam_on_image(img, grayscale_cam[0])
@@ -137,24 +145,27 @@ def get_save_grad_cam_images(data_loader, model, cam, device, subset='valid'):
 
 def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # Get data
     val_data_loader = get_data_loader()
     if args.train_set:
         train_data_loader = get_data_loader(train=True)
     print("Done loading data")
+
+    # Get and evaluate model, and raw saliency map
     num_classes = 2 if args.label_type.startswith('2') else 3
     model = get_resnet18(num_classes=num_classes)
     if args.model_path is not None:
         model.load_state_dict(torch.load(args.model_path, map_location=device))
     model.eval()
     model = model.to(device)
-
     target_layers = [model.layer4[-1]]
-    cam = GradCAM(model=model, target_layers=target_layers, use_cuda=torch.cuda.is_available())
+    saliency = GradCAM(model=model, target_layers=target_layers, use_cuda=torch.cuda.is_available())
     print("Done initialising grad cam with model")
 
-    get_save_grad_cam_images(val_data_loader, model, cam, device)
+    # Get and save / visualise the saliency frames
+    visualise_save_saliency_frames(val_data_loader, model, saliency, device)
     if args.train_set:
-        get_save_grad_cam_images(train_data_loader, model, cam, device, subset='train')
+        visualise_save_saliency_frames(train_data_loader, model, saliency, device, subset='train')
 
 
 if __name__ == '__main__':
