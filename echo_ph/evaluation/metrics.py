@@ -162,7 +162,7 @@ class Metrics():
         self.sm_probs = sm_probs
         self.binary = binary
         self.regression = regression
-        if not self.binary:  # probs won't be needed for multi-class prediction
+        if not self.binary:  # For multi-class prediction, calculate sm_probs in this class.
             self.sm_probs = None
         self.tb = tb
 

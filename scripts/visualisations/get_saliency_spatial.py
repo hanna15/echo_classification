@@ -1,6 +1,6 @@
 import torch
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
-from utils.transforms import get_transforms
+from echo_ph.data.transforms import get_transforms
 from utils.helpers import get_index_file_path
 from echo_ph.data import EchoDataset
 import cv2

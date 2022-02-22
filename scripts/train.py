@@ -10,7 +10,7 @@ import wandb
 from echo_ph.data.echo_dataset import EchoDataset
 from echo_ph.data.ph_labels import long_label_type_to_short
 from echo_ph.evaluation.metrics import Metrics
-from utils.transforms import get_transforms
+from echo_ph.data.transforms import get_transforms
 from utils.helpers import get_index_file_path, set_arg_parse_all, get_temp_model, get_spatial_model
 import warnings
 

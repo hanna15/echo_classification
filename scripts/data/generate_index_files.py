@@ -5,7 +5,7 @@ import pickle
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 
 """
-This script splits videos into training and validation data in a stratified way, keeping class ratios - according
+This script generates index files for training and validation data in a stratified way, keeping class ratios - according
 to a given class formulation (i.e. the method used to convert raw labels to classes).
 When --k is specified > 1, this generates train-valid splits for k-fold cross-validation.
 """
@@ -41,6 +41,7 @@ def print_res(train_labels, valid_labels, test_labels=None):
     Prints the results, i.e. the ratio of each label.
     :param train_labels: List of labels for train samples
     :param valid_labels: List of labels for valid samples
+    :param test_labels: (Optional) list of labels for test samples, if seperate test set.
     :return:
     """
     cnt_val = dict()

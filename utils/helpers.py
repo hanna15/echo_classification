@@ -4,6 +4,8 @@ from echo_ph.models.resnet_3d import Res3DMultiView, Res3DSaliency, Res3DAttenti
 from echo_ph.models.resnets import get_resnet18, ResMultiView
 from echo_ph.models.conv_nets import ConvNet, SimpleConvNet
 
+# Various functions that are used multiple times throughout the project, and don't belong to a specific class.
+
 
 def get_index_file_path(no_folds, curr_fold, label_type, train=True):
     """

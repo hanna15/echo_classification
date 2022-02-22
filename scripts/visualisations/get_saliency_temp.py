@@ -5,7 +5,7 @@ from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 from medcam import medcam
-from utils.transforms import get_transforms
+from echo_ph.data.transforms import get_transforms
 from utils.helpers import get_index_file_path, get_temp_model
 from echo_ph.data import EchoDataset
 from echo_ph.visual.video_saver import VideoSaver
