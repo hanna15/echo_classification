@@ -36,7 +36,6 @@ def get_mask_fn(mask_dir, size, img_scale, label_type, fold):
 
 
 class Trim():
-
     def __init__(self, border=0):
         self.border = border
         self.to_pil = transforms.ToPILImage()
@@ -59,7 +58,6 @@ class CropToCorners():
     """
 
     def _get_masks(self):
-        # mask_fn = os.path.join(self.mask_path, f'{-1}_{int(100 * float(self.orig_img_scale))}_percent_fold{self.fold}.pt')
         mask_fn = get_mask_fn(self.mask_path, -1, self.orig_img_scale, self.label_type, self.fold)
         if not os.path.exists(mask_fn):
             gen_masks(mask_fn, -1, self.orig_img_scale, self.index_file_path, view=self.view)
@@ -626,9 +624,6 @@ def gen_masks(mask_fn, resize, orig_scale_fac, index_file_path, view='KAPAP'):
     masks = {}
     p_ids = [str(id) + view for id in np.load(index_file_path)]
     results = []
-    # for p_id in p_ids:
-    #     result = _gen_mask(index_file_path, resize, orig_scale_fac, p_id)
-    #     results.append(result)
     with mp.Pool(processes=16) as pool:
         for result in pool.map(partial(_gen_mask, index_file_path, resize, orig_scale_fac), p_ids):
             results.append(result)
@@ -686,7 +681,6 @@ def _gen_mask(index_file_path, resize, orig_scale_fac, p_id):
 
 def gen_mask_corners(mask_path, corners_fn, orig_scale_fac, index_file_path, fold=0, view='KAPAP', label_type='2class'):
     # Assemble pre-computation paths
-    # mask_fn = os.path.join(mask_path, f'{-1}_{int(100 * float(orig_scale_fac))}_percent_fold{fold}.pt')
     mask_fn = get_mask_fn(mask_path, -1, orig_scale_fac, label_type, fold)
     # Load masks
     if not os.path.exists(mask_fn):
@@ -752,45 +746,3 @@ def get_arc_points_from_mask(mask):
 
     corners = np.array([top, right, bot, left])
     return corners
-
-
-'''
-Simplified augment for type-4 only => Just to better understand the flow / pipeline.
-def __call__(self, sample):
-    # Get sample and corresponding mask
-    sample, p_id = sample
-    # 10 % of images don't get any augmentation
-    if torch.rand(1) < 0.1:
-        if self.return_pid:
-            return sample, p_id
-        return sample
-
-    mask = self.masks[p_id].unsqueeze(0)
-    mask = mask.to(sample.device)         # Try moving mask to gpu if available
-
-    # Apply intensity transformations, each with a probability of 50 % 
-    for t in self.intensity_transformations:
-        if torch.rand(1) < 0.5:
-            sample = t(sample)
-
-    # Apply positional transformations
-    if torch.rand(1) < 0.75:  # 75 % get positional transforms (each one with 60% chance) with grey background
-        sample = self._apply_positional_transforms(sample, mask, p=0.6)
-        if torch.rand(1) < 0.5: # retrieves original shape for 50 % of frames with positional transforms & grey backgt
-            sample = self._apply_mask(sample, mask)
-    else:  # 25% get no positional transforms, but only gray out background.
-        if torch.rand(1) < 0.25:
-            # Cut off black border around echo & add background noise
-            sample = self._cut_border(sample, mask)
-            sample = self._apply_background_noise(sample, mask)
-
-    # Add speckle noise to background (always do this - only has effects when background is still gray)
-    sample = self._add_background_speckle_noise(sample)
-    # Add random noise
-    rn = RandomNoise()
-    sample = rn(sample)
-
-    if self.return_pid:
-        return sample, p_id
-    return sample
-'''
