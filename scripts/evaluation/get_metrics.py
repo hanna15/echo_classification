@@ -78,8 +78,6 @@ def get_metrics_for_run(res_base_dir, run_name, out_dir, col, subset='val', get_
     fold_paths = [os.path.join(res_path, fold_path) for fold_path in sorted(os.listdir(res_path)) if
                   os.path.isdir(os.path.join(res_path, fold_path))]
     for fold_dir in fold_paths:
-        # epoch = int(fold_dir.rsplit('_e', 1)[-1])
-        # epochs.append(epoch)
         fold_preds, fold_probs, fold_targets, fold_samples, outs = read_results(fold_dir, subset)
         if fold_preds is None:
             print(f'failed for model {os.path.basename(fold_dir)}')
@@ -100,9 +98,9 @@ def get_metrics_for_run(res_base_dir, run_name, out_dir, col, subset='val', get_
             avg_softm_probs.extend(avg_prob)
 
     if get_clf_report or get_confusion:
-        # Can't take average over the folds and report std, rather get all unique video (contained in all folds).
-        # Note that some videos might appear in more than 1 fold, because cross-validation strategy picks random 20%
-        # videos for validation per fold, with replacement.
+        # For classification report or confusion matrix, don't average over the folds, rather get all unique video
+        # (contained in all folds). Note that some videos might appear in more than 1 fold, because cross-validation
+        # strategy picks random 20% videos for validation per fold, with replacement.
         # => Thus need to average per video, for those video appearing in more than one fold.
         all_unique_video_res = {}
         for v_id, v_target, v_pred in zip(vid_ids, vid_targets, vid_preds):
@@ -136,6 +134,7 @@ def get_metrics_for_run(res_base_dir, run_name, out_dir, col, subset='val', get_
         fpr1, tpr1, thresh1 = roc_curve(vid_targets, avg_softm_probs, pos_label=1, drop_intermediate=False)
         plt.plot(fpr1, tpr1, color=col, label=run_label)
 
+    # Correct res string format, depending on out type
     ret = [] if args.out_type == 'csv' else ''
     for metric_values in metric_dict.values():
         mean = np.mean(metric_values)
@@ -150,23 +149,22 @@ def get_metrics_for_run(res_base_dir, run_name, out_dir, col, subset='val', get_
 
 
 def main():
-    if args.cr:
-        print("Also save classification reports")
     res_dir = args.res_dir
     out_dir = args.out_dir
-    os.makedirs(os.path.join(out_dir, 'classification_reports'), exist_ok=True)
-    if res_dir is not None:
+    if args.cr:
+        os.makedirs(os.path.join(out_dir, 'classification_reports'), exist_ok=True)
+    if res_dir is not None: # order by run names
         all_runs = os.listdir(res_dir)
-        # so out-names can be ordered by sorted run names
         all_runs = sorted([run for run in all_runs if os.path.isdir(os.path.join(res_dir, run))])
     else:
         all_runs = args.run_paths
-    no_runs = len(all_runs)
-    val_data = [[] for _ in range(no_runs)]  # list of lists, for each run
-    train_data = [[] for _ in range(no_runs)]  # list of lists, for each run
-    colorMap = plt.get_cmap('jet', no_runs)
+    num_runs = len(all_runs)
+    val_data = [[] for _ in range(num_runs)]  # list of lists, for each run
+    train_data = [[] for _ in range(num_runs)]  # list of lists, for each run
+    colorMap = plt.get_cmap('jet', num_runs)
+    # Get metrics for each run
     for i, run_name in enumerate(all_runs):
-        col = colorMap(i/no_runs)
+        col = colorMap(i/num_runs)
         out_name = None if args.out_names is None else args.out_names[i]
         res = get_metrics_for_run(res_dir, run_name, out_dir, col, get_clf_report=args.cr, get_confusion=args.cm,
                                   first=(i == 0), out_name=out_name)
@@ -179,10 +177,10 @@ def main():
         df_names = args.out_names
     else:
         df_names = [os.path.basename(run) for run in all_runs]
-    if not args.only_plot:
+    if not args.only_plot: # Save results from all runs in one file
         if args.out_type == 'csv':
             df = pd.DataFrame(val_data, index=df_names, columns=metric_list)
-        else: # args.out_type == 'latex'
+        else:  # args.out_type == 'latex'
             df = pd.DataFrame(val_data, index=df_names)
         if args.train:
             if args.out_type == 'csv':
@@ -192,7 +190,7 @@ def main():
             df = pd.concat([df, df_train], keys=['val', 'train'], axis=1)
         df.to_csv(os.path.join(out_dir, 'summary.csv'), float_format='%.2f')
 
-    # finalise roc_auc curve
+    # Plotting -> Finalise roc_auc curve
     plt.xlabel("FPR")
     plt.ylabel("TPR")
     title = ' '.join(args.plot_title) if args.plot_title is not None else ''
