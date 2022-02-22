@@ -3,7 +3,7 @@
 Data and training pipeline for classification of newborn echocardiograms,
 for detection of pulmonary hypertension (PH), a functional heart defect,
 in newborns.
-
+<!--
 - Main code and classes are located in the *ehco_ph* package/module.
 
 - Scripts for pre-processing data, generating index files (for splitting into train 
@@ -27,14 +27,14 @@ Description of main scripts and how to run them:
 3) Visualisations:
    - Visualise temporal model: 
         - Save 1 clip per video: 
-        - <code> python scripts/visualise/vis_grad_cam_temp.py --model_path  path_to_trained_model.pt  --model model_type --num_rand_samples 1 --save_video_clip </code>
+        - <code> python scripts/visualisations/vis_grad_cam_temp.py --model_path  path_to_trained_model.pt  --model model_type --num_rand_samples 1 --save_video_clip </code>
         - Save full video (feed all frames - but model not trained with that input): <code> python scripts/visualise/vis_grad_cam_temp.py --model_path  path_to_trained_model.pt  --model model_type --all_frames --save_video </code>
    - Visualise spatial model: (TODO: prob. need to adjust also (!)):
-     -  <code> python scripts/visualise/vis_grad_cam.py --todo </code> (TODO: FINISH)
+     -  <code> python scripts/visualisations/vis_grad_cam.py --todo </code> (TODO: FINISH)
    - Visualisation saliency model: Requires a separate model.
 4) Multi-View Majority Vote (MV) / FRAME-LEVEL Joining :
     - <code> MV: python scripts/evaluation/multi_view_ensemble.py base_res_dir --res_files file_name_KAPAP file_name_CV file_name_CV --views kapap cv la </code>
     - <code> Frame-level: python scripts/evaluation/join_view_models_frame_level.py base_res_dir --res_files file_name_KAPAP file_name_CV file_name_CV --views kapap cv la </code>
     - Note: Also some draft files on same topic named 'analyse_result_files.py', and 'analyse_result_files2.py'
      - TODO: Check if I need anything from these files and incorporate it into the multi_view_ensemble.py 
-    
+-->
