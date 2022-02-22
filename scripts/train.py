@@ -15,10 +15,8 @@ from utils.helpers import get_index_file_path, set_arg_parse_all, get_temp_model
 import warnings
 
 """
-This script trains a basic pre-trained resnet-50 and performs image classification on the first frame of each 
-newborn echocardiography video (KAPAP or A4C view). 
+This script trains the 3D CNNs or spatial CNNs.
 """
-
 
 TORCH_SEED = 0
 torch.manual_seed(TORCH_SEED)  # Fix a seed, to increase reproducibility
@@ -44,7 +42,7 @@ def get_run_name():
     """
     Returns a 'semi'-unique name according to most important arguments.
     Can be used for model name and tb log names
-    :return:
+    :return: run name
     """
     if args.run_id == '':
         run_id = ''
@@ -107,7 +105,7 @@ def get_metrics_probs(outputs, sm_prob_1s, targets, samples, binary=True, prefix
     """
     Get metrics per batch
     :param outputs: Model raw outputs (before max)
-    :param sm_prob_1s: Soft-max probabilities of the positive class
+    :param sm_prob_1s: Soft-max probabilities of the positive class (for binary classification)
     :param targets: Targets / true label - as a tensor OR list
     :param samples: Sample names of the batch
     :param binary: Set to true, in case of binary classification
@@ -163,66 +161,72 @@ def run_batch(batch, model, criterion=None, binary=False):
     return loss, outputs, targets, sample_names, attention
 
 
-def save_model_and_res(model, run_name, target_lst, pred_lst, val_target_lst, val_pred_lst, sample_names,
-                       val_sample_names, attention=[], val_attention=[], epoch=None, fold=None):
+def get_base_name(run_name, fold=None, epoch=None):
     """
-    Save the given model, as well as the outputs, targets & metrics
-    :param model: The model to save
-    :param run_name: Descriptive name of this run / model
-    :param target_lst: List of targets for training data
-    :param pred_lst: List of predictions for training data
-    :param sample_names: List of sample names for training data (sample + frame nr)
-    :param val_target_lst: List of targets for validation data
-    :param val_pred_lst: List of predictions for validation data
-    :param val_sample_names: List of sample names for validation data (sample + frame nr)
-    :param epoch: Current epoch for the given model
-    :param fold: If cross-validation is being used, this is the current fold
+    Get name base for all results files and models for this run, of this epoch and fold.
+    :param run_name: Descriptive name of this model (run)
+    :param fold: Current fold
+    :param epoch: Current epoch
+    :return:
     """
     fold = '' if fold is None else 'fold' + str(fold) + '_'
     epoch = '_final' if epoch is None else '_e' + str(epoch)
     base_name = fold + run_name + epoch
+    return base_name
 
-    res_dir = os.path.join(BASE_RES_DIR, run_name, base_name)
 
+def save_model(model, run_name, epoch_run_name):
+    """
+    Save model for current epoch, and delete previous models of same run, to save space
+    :param model: The model to save
+    :param run_name: Descriptive name of this model (run)
+    :param epoch_run_name: The name of the run of this epoch
+    """
+    model_dir = os.path.join(BASE_MODEL_DIR, run_name)
+    os.makedirs(model_dir, exist_ok=True)
+    model_file_name = epoch_run_name + '.pt'
+    # Just before saving the model, delete older versions of the model and results, to save space
+    for model_file in os.listdir(model_dir):
+        # same model but different epoch
+        if model_file.split('_e')[0] == model_file_name.split('_e')[0]:
+            os.system(f'rm -r {os.path.join(model_dir, model_file)}')
+            res_dir_to_del = os.path.join(BASE_RES_DIR, run_name, model_file[:-3])
+            if os.path.exists(res_dir_to_del):
+                os.system(f'rm -r {res_dir_to_del}')
+    if args.multi_gpu:  # After wrapping the model in nn.DataParallel, original model will be accessible via model.module
+        torch.save(model.module.state_dict(), os.path.join(model_dir, model_file_name))
+    else:
+        torch.save(model.state_dict(), os.path.join(model_dir, model_file_name))
+
+
+def save_res(run_name, epoch_run_name, target_lst, pred_lst, sample_names, subset='val', attention=[]):
+    """
+    Save results for validation or train set.
+    :param run_name: Descriptive name of this model (run)
+    :param epoch_run_name: The name of the run of this epoch
+    :param target_lst: List of targets for this subset
+    :param pred_lst: List of predictions or raw model outputs for this subset
+    :param sample_names: List of sample names for this subset
+    :param subset: 'train' or 'val'
+    :param attention: (Optional) List of attention weights, for when using attention-based model.
+    """
+    res_dir = os.path.join(BASE_RES_DIR, run_name, epoch_run_name)
     os.makedirs(res_dir, exist_ok=True)
     if not os.path.exists(res_dir):  # Also add this, bc in cluster sometimes the other one is not working
         os.makedirs(res_dir)
-    model_file_name = base_name + '.pt'
     targ_file_name = 'targets.npy'
     pred_file_name = 'preds.npy'
     sample_file_names = 'samples.npy'
     att_file_names = 'attention.npy'
-
-    if model is not None:
-        model_dir = os.path.join(BASE_MODEL_DIR, run_name)
-        os.makedirs(model_dir, exist_ok=True)
-        # Just before saving the model, delete older versions of the model and results, to save space
-        for model_file in os.listdir(model_dir):
-            # same model but different epoch
-            if model_file.split('_e')[0] == model_file_name.split('_e')[0]:
-                os.system(f'rm -r {os.path.join(model_dir, model_file)}')
-                res_dir_to_del = os.path.join(BASE_RES_DIR, run_name, model_file[:-3])
-                if os.path.exists(res_dir_to_del):
-                    os.system(f'rm -r {res_dir_to_del}')
-        if args.multi_gpu:  # After wrapping the model in nn.DataParallel, original model will be accessible via model.module
-            torch.save(model.module.state_dict(), os.path.join(model_dir, model_file_name))
-        else:
-            torch.save(model.state_dict(), os.path.join(model_dir, model_file_name))
-    if target_lst is not None:
-        np.save(os.path.join(res_dir, 'train_' + targ_file_name), target_lst)
-        np.save(os.path.join(res_dir, 'train_' + pred_file_name), pred_lst)
-        np.save(os.path.join(res_dir, 'train_' + sample_file_names), sample_names)
-    if val_target_lst is not None:
-        np.save(os.path.join(res_dir, 'val_' + targ_file_name), val_target_lst)
-        np.save(os.path.join(res_dir, 'val_' + pred_file_name), val_pred_lst)
-        np.save(os.path.join(res_dir, 'val_' + sample_file_names), val_sample_names)
+    prefix = subset + '_'
+    np.save(os.path.join(res_dir, prefix + targ_file_name), target_lst)
+    np.save(os.path.join(res_dir, prefix + pred_file_name), pred_lst)
+    np.save(os.path.join(res_dir, prefix + sample_file_names), sample_names)
     if len(attention) > 0:
         np.save(os.path.join(res_dir, 'train_' + att_file_names), attention)
-    if len(val_attention) > 0:
-        np.save(os.path.join(res_dir, 'val_' + att_file_names), val_attention)
 
 
-def evaluate(model, device, valid_loader, valid_len, run_name, binary=False):
+def evaluate(model, dev, valid_loader, valid_len, run_name, binary=False):
     print("Start evaluating on", valid_len, "validation samples")
     sm = torch.nn.Softmax(dim=-1)
     if os.path.isdir(args.model_name):
@@ -233,12 +237,11 @@ def evaluate(model, device, valid_loader, valid_len, run_name, binary=False):
                 break
     else:
         model_path = args.model_name
-    model.load_state_dict(torch.load(model_path, map_location=device))
+    model.load_state_dict(torch.load(model_path, map_location=dev))
     model.eval()
     epoch_valid_targets = []
     epoch_valid_samples = []
     epoch_valid_outs = []
-    epoch_valid_prob_1s = []
     epoch_valid_attention = []
     for valid_batch in valid_loader:
         _, val_out, val_targets, val_sample_names, val_att = run_batch(valid_batch, model, None, binary)
@@ -247,10 +250,10 @@ def evaluate(model, device, valid_loader, valid_len, run_name, binary=False):
         if val_att is not None:
             epoch_valid_attention.append(val_att.cpu().detach().numpy())
         epoch_valid_outs.extend(val_out.cpu().detach().numpy())
-        epoch_valid_prob_1s.extend(sm(val_out)[:, 1].cpu().detach().numpy())
     targ_lst_valid = [t.item() for t in epoch_valid_targets]
-    save_model_and_res(None, run_name, None, None, targ_lst_valid, epoch_valid_outs, None,
-                       epoch_valid_samples, [], epoch_valid_attention, epoch=None, fold=args.fold)
+    base_name = get_base_name(run_name, fold=args.fold, epoch=None)
+    save_res(run_name, base_name, targ_lst_valid, epoch_valid_outs, epoch_valid_samples, subset='val',
+             attention=epoch_valid_attention)
 
 
 def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run_name, optimizer, weights=None,
@@ -304,12 +307,12 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
         with no_grad():
             model.eval()
             for valid_batch in valid_loader:
-                val_loss, val_out, val_targets, val_sample_names, val_att = run_batch(valid_batch, model, criterion, binary)
+                val_loss, val_out, val_targets, val_sample_names, val_att = run_batch(valid_batch, model, criterion,
+                                                                                      binary)
                 epoch_valid_samples.extend(val_sample_names)
                 epoch_valid_targets.extend(val_targets)
                 if val_att is not None:
                     epoch_valid_attention.append(val_att.cpu().detach().numpy())
-                # epoch_valid_preds.extend(torch.max(val_out, dim=1)[1])
                 epoch_valid_outs.extend(val_out.cpu().detach().numpy())
                 epoch_valid_prob_1s.extend(sm(val_out)[:, 1].cpu().detach().numpy())
                 epoch_valid_loss += val_loss.item() * args.batch_size
@@ -367,12 +370,12 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
                             best_early_stops[i] = log_dict[eval_metric]  # update
                             num_val_fails = 0
                             if not saved_model_this_round:
-                                # save_model_and_res(model, run_name, target_lst, pred_lst, targ_lst_valid,
-                                #                    pred_lst_valid, epoch_samples, epoch_valid_samples,
-                                #                    epoch=epoch, fold=args.fold)
-                                save_model_and_res(model, run_name, target_lst, epoch_outs, targ_lst_valid,
-                                                   epoch_valid_outs, epoch_samples, epoch_valid_samples, epoch_attention,
-                                                   epoch_valid_attention, epoch=epoch, fold=args.fold)
+                                base_name = get_base_name(run_name, fold=args.fold, epoch=epoch)
+                                save_model(model, run_name, base_name)
+                                save_res(run_name, base_name, target_lst, epoch_outs, epoch_samples, subset='train',
+                                         attention=epoch_attention)
+                                save_res(run_name, base_name,  targ_lst_valid, epoch_valid_outs, epoch_valid_samples,
+                                         subset='val', attention=epoch_valid_attention)
                             saved_model_this_round = True
                         else:
                             num_fails_this_round += 1
@@ -392,8 +395,8 @@ def train(model, train_loader, valid_loader, data_len, valid_len, tb_writer, run
 
 def main():
     # Set up device, logging, run name, etc.
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print('Will be training on device', device)
+    dev = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print('Will be training on device', dev)
     run_name = get_run_name()
     print('Run:', run_name)
     use_wandb = False  # Set this to false for now as can't seem to use on cluster
@@ -438,7 +441,7 @@ def main():
                                 num_rand_frames=args.num_rand_frames, segm_masks=args.segm_masks,
                                 temporal=args.temporal, clip_len=args.clip_len, period=args.period)
     if args.weight_loss:
-        class_weights = torch.tensor(train_dataset.class_weights, dtype=torch.float).to(device)
+        class_weights = torch.tensor(train_dataset.class_weights, dtype=torch.float).to(dev)
     else:
         class_weights = None
     valid_dataset = EchoDataset(valid_index_file_path, label_path, videos_dir=args.videos_dir, cache_dir=args.cache_dir,
@@ -453,11 +456,11 @@ def main():
     # Model & Optimizers
     num_classes = len(train_dataset.labels)
     if args.temporal:
-        model = get_temp_model(args.model, num_classes, args.pretrained, device, views=views, size=size,
+        model = get_temp_model(args.model, num_classes, args.pretrained, dev, views=views, size=size,
                                self_att=args.self_attention, map_att=args.map_attention, cl=args.clip_len,
                                join_method=args.join_method)
     else:
-        model = get_spatial_model(args.model, num_classes, args.pretrained, views, device, args.dropout,
+        model = get_spatial_model(args.model, num_classes, args.pretrained, views, dev, args.dropout,
                                   join_method=args.join_method)
     if args.multi_gpu:
         print("Training with multiple GPU")
@@ -484,7 +487,7 @@ def main():
                                   worker_init_fn=seed_worker, generator=g)
     valid_loader = DataLoader(valid_dataset, args.batch_size, shuffle=False, num_workers=num_workers)
     if args.load_model:
-        evaluate(model, device, valid_loader, len(valid_dataset), run_name, binary=binary)
+        evaluate(model, dev, valid_loader, len(valid_dataset), run_name, binary=binary)
     else:
         train(model, train_loader, valid_loader, len(train_dataset), len(valid_dataset), tb_writer, run_name,
               optimizer, weights=class_weights, binary=binary, use_wandb=use_wandb)
