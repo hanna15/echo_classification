@@ -204,18 +204,6 @@ if __name__ == "__main__":
     # Maybe have the metric_list as a parameter - depends on the use-case
     metric_list = ['Video ROC_AUC (weighted)', 'Video F1 (weighted)', 'Video P (weighted)', 'Video R (weighted)',
                    'Video bACC', 'Video CI', 'Video Corr CI', 'Video Wrong CI']
-    # metric_list = ['Frame ROC_AUC (macro)', 'Frame bACC', 'Video ROC_AUC (macro)', 'Video bACC', 'Video F1 (macro)',
-    #                'Video P (macro)', 'Video ROC_AUC (weighted)', 'Video ACC', 'Video F1 (weighted)',
-    #                'Video P (weighted)', 'Video R (weighted)', 'Video CI']
-    # metric_list = ['Frame ROC_AUC (macro)', 'Frame ROC_AUC (weighted)', 'Frame bACC', 'Video ROC_AUC (macro)',
-    #                'Video ROC_AUC (weighted)', 'Video bACC', 'Video ACC', 'Video F1 (micro)', 'Video F1 (macro)',
-    #                'Video F1 (weighted)', 'Video P (micro)', 'Video P (macro)', 'Video P (weighted)',
-    #                'Video R (micro)', 'Video R (macro)', 'Video R (weighted)', 'Video CI']
-    #if args.multi_class:
-       # metric_list = ['Frame ROC_AUC', 'Frame bACC', 'Video ROC_AUC', 'Video bACC', 'Video F1 (micro)', 'Video CI']
-    #else:
-        #metric_list = ['Frame ROC_AUC', 'Frame bACC', 'Video ROC_AUC', 'Video bACC', 'Video F1 (micro)',
-    #                   'Video F1, pos', 'Video F1, neg', 'Video CI']
     main()
 
 
