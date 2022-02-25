@@ -124,9 +124,8 @@ def set_arg_parse_all(description, regression=False):
                              'set the number of frames per video.')
     parser.add_argument('--augment', action='store_true',
                         help='set this flag to apply ALL augmentation transformations to training data')
-    parser.add_argument('--aug_type', type=int, default=2,
-                        help='What augmentation type to use (1 for 25% not, 2 for gray vs. background, '
-                             '3 for as in his thesis')
+    parser.add_argument('--aug_type', type=int, default=4,
+                        help='What augmentation type to use')
 
     # Class imbalance
     parser.add_argument('--class_balance_per_epoch', action='store_true',
@@ -147,8 +146,8 @@ def set_arg_parse_all(description, regression=False):
     parser.add_argument('--self_attention', action='store_true', help='If use self-attention (non-local block)')
     parser.add_argument('--map_attention', action='store_true', help='If use map-based attention')
     parser.add_argument('--dropout', type=float, default=0.5, help='Dropout value for those model who use dropout')
-    parser.add_argument('--optimizer', default='adam', choices=['adam', 'adamw'], help='What optimizer to use.')
-    parser.add_argument('--batch_size', type=int, default=128, help='Batch size for training')
+    parser.add_argument('--optimizer', default='adamw', choices=['adam', 'adamw'], help='What optimizer to use.')
+    parser.add_argument('--batch_size', type=int, default=64, help='Batch size for training')
     parser.add_argument('--max_epochs', type=int, default=350, help='Max number of epochs to train')
     parser.add_argument('--lr', type=float, default=0.001, help='Learning rate')
     parser.add_argument('--wd', type=float, default=None,
@@ -163,7 +162,7 @@ def set_arg_parse_all(description, regression=False):
     parser.add_argument('--early_stop', type=int, default=100,
                         help='Patience (in no. epochs) for early stopping due to no improvement of valid f1 score')
     parser.add_argument('--pretrained', action='store_true', help='Set this flag to use pre-trained resnet')
-    parser.add_argument('--eval_metrics', type=str, default=['f1/valid', 'b-accuracy/valid'], nargs='+',
+    parser.add_argument('--eval_metrics', type=str, default=['video-b-accuracy/valid'], nargs='+',
                         help='Set this the metric you want to use for early stopping - you can choose multiple metrics.'
                              'Choices: f1/valid, loss/valid, b-accuracy/valid, video-f1/valid, video-b-accuracy/valid, '
                              'video-roc_auc/valid')

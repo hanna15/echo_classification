@@ -13,10 +13,10 @@ parser = ArgumentParser(
     formatter_class=ArgumentDefaultsHelpFormatter)
 parser.add_argument('--cache_dir', default='~/.heart_echo',
                     help='Path to the directory that should store the cached videos')
-parser.add_argument('--scale_factor', default=0.5,
+parser.add_argument('--scale_factor', default=0.25,
                     help='How much to scale (down) the videos, as a ratio of original size.'
                          'Note that if many scaling factors are desired, this script has to be run once for each.')
-parser.add_argument('--videos_dir', default='/Users/hragnarsd/Documents/masters/videos/Heart_Echo',
+parser.add_argument('--videos_dir', default='~/.echo_videos',
                     help='Path to the directory storing the original videos')
 parser.add_argument('--procs', default=3, help='Number of processes to use')
 
