@@ -1,40 +1,46 @@
 # Classifying PH from ECHOS
 
-Data and training pipeline for classification of newborn echocardiograms,
-for detection of pulmonary hypertension (PH), a functional heart defect,
-in newborns.
-<!--
-- Main code and classes are located in the *ehco_ph* package/module.
+### Summary of repository
+Severity Prediction of PH in newborns using echocardiography (ECHO).
+- Trained models can be found in the following [url todo](https://todo.com).
+- Main code and classes are located in the *ehco_ph* module.
+  - To use the echo_ph package, you must run: 
+          <code> pip install -e . </code>
 
-- Scripts for pre-processing data, generating index files (for splitting into train 
-and valid), training the networks, and analysing results is found inside 
-the *scripts* directory.
+- Scripts for pre-processing dataset, generating index files (for splitting into train 
+and validation set), training models, and analysing results is found in the *scripts* directory.
 
-To use the echo_ph package, you must run: 
-    <code> pip install -e . </code>
+###Description of main scripts and how to run them:
+####Preparing the data for training and evaluation
+- Pre-process the dataset: <code>python scripts/data/preprocess_videos.py</code>
+- Generate clean labels from excel annotations: <code>python scripts/data/generate_labels.py</code>
+- Generate index files with samples acc. to train-val split: <code>python scripts/data/generate_index_files.py</code>
+####Training the models, and saving result files: 
+- Script: <code>scripts/train.py</code>
+- Example of training temporal severity PH prediction model on the PSAX view:
+  -     python scripts/train_simple.py --max_epochs 300 --wd 1e-3 --class_balance_per_epoch --eval_metrics video-b-accuracy/valid --cache_dir ~/.heart_echo --k 10 --fold ${fold} --augment --aug_type 4 --optimizer adamw --pretrained --num_rand_frames 10 --model r3d_18 --temporal --label_type 3class --view KAPAP --batch_size 8
+- Example of training spatial binary PH detection model on the PLAX view:
+  -     python scripts/train_simple.py --max_epochs 300 --wd 1e-3 --class_balance_per_epoch --eval_metrics video-b-accuracy/valid --cache_dir ~/.heart_echo --k 10 --fold ${fold} --augment --aug_type 4 --optimizer adamw --pretrained --num_rand_frames 10 --model resnet --label_type 2class_drop_ambiguous --view LA --batch_size 64
+####Evaluating an already trained model
+  - Use same script as for training (<code>scripts/train.py</code>), with the same arguments as when you trained the model you are now evaluating.
+    - Add the arguments: <code>--load_model</code> and <code>--model_path <path_to_trained_model></code>
+    - This will save the result files, holding the raw output, target and sample names.
+      - If desired, you can get metric results, by running the <code>scripts/evaluation/get_metrics.py</code> (see next section)
+####Get metrics from raw result files
+- <code> python scripts/evaluation/get_metrics.py --res_dir res_dir</code>
+- Add <code>--multi_class </code> if any of the models from res_dir are not binary classification.
+- Note that the res_dir should be the directory storing the directory of other model(s) results dirs.
+####Visualisations
+- Get grad-cam saliency map visualisations for temporal model: 
+     - Save 1 clip per video:
+     -     python scripts/visualisations/vis_grad_cam_temp.py --model_path  <path_to_trained_model.pt>  --model <model_type> --num_rand_samples 1 --save_video_clip
+     - Save full video (feed all frames - but model not trained with this long input): 
+     -     python scripts/visualise/vis_grad_cam_temp.py --model_path  <path_to_trained_model.pt>  --model <model_type> --all_frames --save_video --view <view>
+- Get grad-cam saliency map visualisations for spatial model:
+  - Use  <code>python scripts/visualisations/vis_grad_cam.py </code>
+####Multi-View Majority Vote (MV) and frame level joining of views :
+- Mv of 3 views (similar for 5 views):
+   -     python scripts/evaluation/multi_view_ensemble.py base_res_dir --res_files file_name_KAPAP file_name_CV file_name_CV --views kapap cv la
+- Frame-level joining of 3 views: 
+  -     python scripts/evaluation/join_view_models_frame_level.py base_res_dir --res_files file_name_KAPAP file_name_CV file_name_CV --views kapap cv la
 
-Description of main scripts and how to run them:
-1) Training (script: scripts/train_simple.py): 
-  - training base parameters: 
-    - <code> python scripts/train_simple.py --max_epochs 300 --wd 1e-3 --class_balance_per_epoch --eval_metrics video-b-accuracy/valid --cache_dir ~/.heart_echo --k 10 --fold ${fold} --augment --aug_type 4 --optimizer adamw --pretrained --num_rand_frames 10  </code>
-  - other parameters that vary:  
-    - <code> --model model_type --batch_size batch_size --label_type label_type --temporal --view view1 view2 ... </code>
-    - The temporal model uses batch size of 8, but spatial model a batch size of 64
-2) Get metrics from results file:
-   - <code> python scripts/evaluation/get_metrics.py --res_dir res_dir</code>
-   - add   <code> --multi_class </code> if any of the models from res_dir are not binary classification
-   - Note that the res_dir should be the directory storing the directory of other model(s) results dirs.
-3) Visualisations:
-   - Visualise temporal model: 
-        - Save 1 clip per video: 
-        - <code> python scripts/visualisations/vis_grad_cam_temp.py --model_path  path_to_trained_model.pt  --model model_type --num_rand_samples 1 --save_video_clip </code>
-        - Save full video (feed all frames - but model not trained with that input): <code> python scripts/visualise/vis_grad_cam_temp.py --model_path  path_to_trained_model.pt  --model model_type --all_frames --save_video </code>
-   - Visualise spatial model: (TODO: prob. need to adjust also (!)):
-     -  <code> python scripts/visualisations/vis_grad_cam.py --todo </code> (TODO: FINISH)
-   - Visualisation saliency model: Requires a separate model.
-4) Multi-View Majority Vote (MV) / FRAME-LEVEL Joining :
-    - <code> MV: python scripts/evaluation/multi_view_ensemble.py base_res_dir --res_files file_name_KAPAP file_name_CV file_name_CV --views kapap cv la </code>
-    - <code> Frame-level: python scripts/evaluation/join_view_models_frame_level.py base_res_dir --res_files file_name_KAPAP file_name_CV file_name_CV --views kapap cv la </code>
-    - Note: Also some draft files on same topic named 'analyse_result_files.py', and 'analyse_result_files2.py'
-     - TODO: Check if I need anything from these files and incorporate it into the multi_view_ensemble.py 
--->
