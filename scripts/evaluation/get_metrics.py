@@ -151,6 +151,7 @@ def get_metrics_for_run(res_base_dir, run_name, out_dir, col, subset='val', get_
 def main():
     res_dir = args.res_dir
     out_dir = args.out_dir
+    os.makedirs(out_dir, exist_ok=True)
     if args.cr:
         os.makedirs(os.path.join(out_dir, 'classification_reports'), exist_ok=True)
     if res_dir is not None: # order by run names
