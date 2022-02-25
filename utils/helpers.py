@@ -124,9 +124,8 @@ def set_arg_parse_all(description, regression=False):
                              'set the number of frames per video.')
     parser.add_argument('--augment', action='store_true',
                         help='set this flag to apply ALL augmentation transformations to training data')
-    parser.add_argument('--aug_type', type=int, default=2,
-                        help='What augmentation type to use (1 for 25% not, 2 for gray vs. background, '
-                             '3 for as in his thesis')
+    parser.add_argument('--aug_type', type=int, default=4,
+                        help='What augmentation type to use')
 
     # Class imbalance
     parser.add_argument('--class_balance_per_epoch', action='store_true',
