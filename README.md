@@ -18,9 +18,9 @@ and validation set), training models, and analysing results is found in the *scr
 ####Training the models, and saving result files: 
 - Script: <code>scripts/train.py</code>
 - Example of training temporal severity PH prediction model on the PSAX view:
-  -     python scripts/train_simple.py --max_epochs 300 --wd 1e-3 --class_balance_per_epoch --eval_metrics video-b-accuracy/valid --cache_dir ~/.heart_echo --k 10 --fold ${fold} --augment --aug_type 4 --optimizer adamw --pretrained --num_rand_frames 10 --model r3d_18 --temporal --label_type 3class --view KAPAP --batch_size 8
+  -     python scripts/train_simple.py --max_epochs 300 --wd 1e-3 --class_balance_per_epoch --cache_dir ~/.heart_echo --k 10 --fold ${fold} --augment --pretrained --num_rand_frames 10 --model r3d_18 --temporal --label_type 3class --view KAPAP --batch_size 8
 - Example of training spatial binary PH detection model on the PLAX view:
-  -     python scripts/train_simple.py --max_epochs 300 --wd 1e-3 --class_balance_per_epoch --eval_metrics video-b-accuracy/valid --cache_dir ~/.heart_echo --k 10 --fold ${fold} --augment --aug_type 4 --optimizer adamw --pretrained --num_rand_frames 10 --model resnet --label_type 2class_drop_ambiguous --view LA --batch_size 64
+  -     python scripts/train_simple.py --max_epochs 300 --wd 1e-3 --class_balance_per_epoch --cache_dir ~/.heart_echo --k 10 --fold ${fold} --augment --pretrained --num_rand_frames 10 --model resnet --label_type 2class_drop_ambiguous --view LA --batch_size 64
 ####Evaluating an already trained model
   - Use same script as for training (<code>scripts/train.py</code>), with the same arguments as when you trained the model you are now evaluating.
     - Add the arguments: <code>--load_model</code> and <code>--model_path <path_to_trained_model></code>
