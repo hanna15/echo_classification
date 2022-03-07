@@ -127,7 +127,8 @@ def overlay(raw_input, saliency_map):
         raw_input /= 255
     saliency_map = cm.jet_r(saliency_map)[..., :3].squeeze()
     saliency_map = (saliency_map.astype(float) + raw_input.astype(float)) / 2
-    saliency_map *= 255
+    saliency_map \
+        *= 255
     return saliency_map.astype(np.uint8)
 
 
@@ -180,6 +181,7 @@ def visualise_save_saliency(data_loader, model, device, subset='valid'):
         out, saliency_map = model(inp)
         pred = torch.max(out, dim=1).indices[0].item()
         corr = 'CORR' if label == pred else 'WRONG'
+        print(sample_name, corr)
         title = f'{sample_name}-{corr}-{label}.jpg'
         video = np.swapaxes(inp, 1, 2)[0]  # re-shape to (no_frames, ch, W, H)
         raw_vid_clip = video.cpu().detach().numpy()
@@ -202,7 +204,7 @@ def visualise_save_saliency(data_loader, model, device, subset='valid'):
                             zip(raw_vid_clip, saliency_clip)]
             clip_out_dir = os.path.join(out_dir + '_clip', subset)
             print("save to folder", clip_out_dir)
-            vs = VideoSaver(title, overlay_clip, out_dir=clip_out_dir)
+            vs = VideoSaver(title, overlay_clip, out_dir=clip_out_dir, fps=7)
             vs.save_video()
         if args.show or args.save_frames:
             if args.save_frames:
@@ -231,6 +233,7 @@ def visualise_save_saliency(data_loader, model, device, subset='valid'):
                 if args.save_frames:
                     x = overlay(img, saliency_frame)
                     cv2.imwrite(os.path.join(out_frame_dir, title), x)
+                    cv2.imwrite(os.path.join(out_frame_dir, 'orig_' + title), img.squeeze().cpu().numpy() * 255.0)
     # Save entire saliency overlayed video, combining all clips
     if args.save_video:
         save_all = args.corr_thres is None and args.wrong_thres is None
@@ -245,7 +248,7 @@ def visualise_save_saliency(data_loader, model, device, subset='valid'):
             if save_all or (good and ratio_corr >= args.corr_thres) or (bad and ratio_corr <= args.wrong_thresh):
                 true_label = clip_titles[0].split('-')[-1][:-4]
                 video_title = f'{video_id}-{ratio_corr:.2f}-{true_label}.jpg'
-                vs = VideoSaver(video_title, overlay_clips, out_dir=os.path.join(out_dir + '_video', subset))
+                vs = VideoSaver(video_title, overlay_clips, out_dir=os.path.join(out_dir + '_video', subset), fps=7)
                 vs.save_video()
 
 
