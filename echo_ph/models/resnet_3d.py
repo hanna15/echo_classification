@@ -124,7 +124,7 @@ class Res3DMultiView(nn.Module):
         super(Res3DMultiView, self).__init__()
         self.dev = device
         self.views = views
-        self.method = join_method
+        self.join_method = join_method
         num_views = len(self.views)
         model = models.video.__dict__[model_type](pretrained=pretrained)
         in_channels = 1
