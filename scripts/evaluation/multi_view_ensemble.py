@@ -16,7 +16,7 @@ parser = ArgumentParser(
 parser.add_argument('base_dir', help='Path to the base directory where model files are stored')
 parser.add_argument('--res_files', help='Path to the results file of kapap view', nargs='+')
 parser.add_argument('--views', help='Path to the results file of kapap view', nargs='+')
-parser.add_argument('--disagree_method', default='conf', choices=['conf', 'random', 'max'],
+parser.add_argument('--disagree_method', default='conf', choices=['conf', 'random', 'max', 'psax'],
                     help='What method to use to decide on a prediction when all models disagree')
 parser.add_argument('--prob_method', default='conf', choices=['mean', 'conf'],
                     help='What method to use to decide on how to aggregate mean probabilities.'
@@ -64,38 +64,97 @@ def majority_vote(pred_views, conf_views, mean_probs, disagree_method='conf', pr
     :return: The majority vote prediction, associated confidence, and probabilities, as well as num models agreeing
     """
     mv_pred = multimode(pred_views)  # majority vote pred is set to most common class(es) predictions
-    best_indexes = []
-    for mv_p in mv_pred:
-        b_idx = np.argwhere(pred_views == mv_p).squeeze(1)
-        best_indexes.extend(b_idx)
-    mv_conf = conf_views[best_indexes]
-    if prob_method == 'conf':
-        # Pick the probs of the most confident view, of the 'selected' views:
-        max_conf_idx = np.argmax(mv_conf)
-        idx = best_indexes[max_conf_idx]
-        mv_mean_probs = mean_probs[idx]
-    else:
-        mv_mean_probs = np.nanmean(mean_probs[best_indexes], axis=0)
-    mv_conf = np.nanmean(mv_conf)
     num_views = len(pred_views)
     no_unique_preds = len(set(pred_views))
     all_models_disagree = (num_views == no_unique_preds)
-
     # Only one label is the most common, select this one
     if len(mv_pred) == 1:
-        return mv_pred[0], mv_conf, mv_mean_probs, all_models_disagree
-    # Else majority vote gives a tie, pick the results of the most confident model, or acc. to selected strategy
-    if disagree_method == 'conf':  # Default approach
-        best_idx = np.nanargmax(conf_views)  # max confidence
-    elif disagree_method == 'random':
-        best_idx = np.random.randint(num_views)
-        while np.isnan(pred_views[best_idx]):
+        mv_pred = mv_pred[0]
+    else:  # Else majority vote gives a tie, pick the results of the most confident model, or acc. to selected strategy
+        if disagree_method == 'conf':  # Default approach
+            print(conf_views)
+            best_idx = np.nanargmax(conf_views)  # max confidence
+            print(best_idx)
+        elif disagree_method == 'random':
             best_idx = np.random.randint(num_views)
-    else:  # disagree_method == 'max':
-        best_idx = np.nanargmax(pred_views)  # max pred. value
-    mv_pred = pred_views[best_idx]
-    mv_conf = conf_views[best_idx]
+            while np.isnan(pred_views[best_idx]):
+                best_idx = np.random.randint(num_views)
+        elif disagree_method == 'max':
+            best_idx = np.nanargmax(pred_views)  # max pred. value
+        else:  # First view, KAPAP (Make sure to give in this order)
+            if not np.isnan(pred_views[0]):
+                best_idx = 0
+            else:
+                best_idx = np.nanargmax(pred_views)  # max pred. value
+        mv_pred = pred_views[best_idx]
+
+    selected_indexes = np.argwhere(pred_views == mv_pred).squeeze(1)  # Idx of all views that predict this
+    selected_conf = conf_views[selected_indexes]
+    if prob_method == 'conf':
+        max_conf_idx = np.nanargmax(selected_conf)
+        view_idx = selected_indexes[max_conf_idx]
+        mv_mean_probs = mean_probs[view_idx]
+    else:
+        mv_mean_probs = np.nanmean(mean_probs[selected_indexes], axis=0)
+    mv_conf = np.nanmean(selected_conf)
     return mv_pred, mv_conf, mv_mean_probs, all_models_disagree
+
+
+# def majority_vote2(pred_views, conf_views, mean_probs, disagree_method='conf', prob_method='conf'):
+#     """
+#     :param pred_views: List of prediction for current subject, for all views.
+#     :param conf_views: List of confidence for current subject, for all views.
+#     :param mean_probs: List of mean model probabilities for current subject, for all views.
+#     :param disagree_method: Method to use to select a prediction when all models disagree. Choices: random, conf, max.
+#                    random: Choose random prediction,
+#                    conf: Choose prediction associated to most confident model,
+#                    max: Choose the higher prediction (i.e. more severe)
+#     :param prob_method: Method to use to aggregate model probabilities, for ROC_AUC score.
+#                     mean: Take mean output prob, of all selected model.
+#                     conf: Take the probabilities of the most confident model of the selected ones.
+#     :return: The majority vote prediction, associated confidence, and probabilities, as well as num models agreeing
+#     """
+#     mv_pred = multimode(pred_views)  # majority vote pred is set to most common class(es) predictions
+#     selected_indexes = []  # Indexes of all views that give the 'selected' prediction (i.e. the majority vote pred)
+#     for mv_p in mv_pred:
+#         b_idx = np.argwhere(pred_views == mv_p).squeeze(1)
+#         selected_indexes.extend(b_idx)  # [0, 2]
+#     mv_conf = conf_views[selected_indexes]  # Confidence of the selected views, 0 2
+#     if prob_method == 'conf':
+#         # Pick the probs of the most confident view, of the 'selected' views:
+#         max_conf_idx = np.nanargmax(mv_conf)
+#         view_idx = selected_indexes[max_conf_idx]
+#         mv_mean_probs = mean_probs[view_idx]
+#     else:
+#         mv_mean_probs = np.nanmean(mean_probs[selected_indexes], axis=0)
+#     mv_conf = np.nanmean(mv_conf)
+#     num_views = len(pred_views)
+#     no_unique_preds = len(set(pred_views))
+#     all_models_disagree = (num_views == no_unique_preds)
+#
+#     # Only one label is the most common, select this one
+#     if len(mv_pred) == 1:
+#         return mv_pred[0], mv_conf, mv_mean_probs, all_models_disagree
+#     # Else majority vote gives a tie, pick the results of the most confident model, or acc. to selected strategy
+#     if disagree_method == 'conf':  # Default approach
+#         print(conf_views)
+#         best_idx = np.nanargmax(conf_views)  # max confidence
+#         print(best_idx)
+#     elif disagree_method == 'random':
+#         best_idx = np.random.randint(num_views)
+#         while np.isnan(pred_views[best_idx]):
+#             best_idx = np.random.randint(num_views)
+#     elif disagree_method == 'max':
+#         best_idx = np.nanargmax(pred_views)  # max pred. value
+#     else:  # First view, KAPAP (Make sure to give in this order)
+#         if not np.isnan(pred_views[0]):
+#             best_idx = 0
+#         else:
+#             best_idx = np.nanargmax(pred_views)  # max pred. value
+#     mv_pred = pred_views[best_idx]
+#     mv_conf = conf_views[best_idx]
+#     mv_mean_probs = mean_probs[best_idx]
+#     return mv_pred, mv_conf, mv_mean_probs, all_models_disagree
 
 
 def main():
