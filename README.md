@@ -2,7 +2,7 @@
 
 ### Summary of repository
 Severity Prediction of PH in newborns using echocardiography (ECHO).
-- Trained models can be found in the following [url todo](https://todo.com).
+- Trained models can be found in the following [url](https://drive.google.com/drive/folders/10sTERl6dbAxTilWNJqpGt1BVsf6plUhG)
 - Main code and classes are located in the *ehco_ph* module.
 
 - Scripts for pre-processing dataset, generating index files (for splitting into train 

@@ -203,8 +203,11 @@ def main():
 if __name__ == "__main__":
     args = parser.parse_args()
     # Maybe have the metric_list as a parameter - depends on the use-case
+
+    # metric_list = ['Video ROC_AUC (weighted)', 'Video F1 (weighted)', 'Video P (weighted)', 'Video R (weighted)',
+    #                'Video bACC', 'Video CI', 'Video Corr CI', 'Video Wrong CI']
     metric_list = ['Video ROC_AUC (weighted)', 'Video F1 (weighted)', 'Video P (weighted)', 'Video R (weighted)',
-                   'Video bACC', 'Video CI', 'Video Corr CI', 'Video Wrong CI']
+                   'Video bACC', 'Video CI']
     main()
 
 
